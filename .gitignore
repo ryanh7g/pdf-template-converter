@@ -1,0 +1,12 @@
+# Dependencies (installed by preflight.mjs on first run)
+node_modules/
+package-lock.json
+
+# Working artifacts from conversions
+work/
+*.log
+tmp/
+
+# OS / editor
+.DS_Store
+Thumbs.db

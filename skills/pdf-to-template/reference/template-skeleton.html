@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ravenswood Flyer — template</title>
+
+<!--
+  Self-contained, fixed-layout, print-accurate. Content is NOT in this file:
+  it lives in data.json and is injected into the pure render(data) below. This
+  is the SINGLE render path used by (1) the live-preview iframe, (2) the QA
+  screenshot pass, and (3) the PDF export.
+
+  Data is provided three ways, in priority order:
+    1. window.__FLYER_DATA__ inlined before this script (standalone export), else
+    2. postMessage({ type:"render", data }) from a parent (the editor), else
+    3. fetch("./data.json") (standalone, when served over HTTP).
+-->
+
+<style>
+  /* ---- Fonts (self-contained, no internet needed) ---------------------- */
+  @font-face { font-family:"Lato"; font-weight:300; src:url("fonts/Lato-Light.ttf") format("truetype"); }
+  @font-face { font-family:"Lato"; font-weight:400; src:url("fonts/Lato-Regular.ttf") format("truetype"); }
+  @font-face { font-family:"Lato"; font-weight:500; src:url("fonts/Lato-Medium.ttf") format("truetype"); }
+  @font-face { font-family:"Lato"; font-weight:700; src:url("fonts/Lato-Bold.ttf") format("truetype"); }
+  @font-face { font-family:"BornReady"; src:url("fonts/BornReadySlanted.ttf") format("truetype"); }
+
+  /* ---- Color palette (sample from the source PDF) ---------------------- */
+  :root{
+    --navy:#1D252C; --ink:#231F20; --body:#4D4D4F; --line:#4D4D4F;
+    --photo-bg:#E6E7E8; --black:#000000;
+    /* Trim is intrinsic to this template's absolute-pt layout; these mirror
+       manifest.trim. Bleed defaults to 0 (preview/QA) and is set by render()
+       from manifest.bleedIn at export time. */
+    --trim-w:8.5in; --trim-h:11in; --bleed:0pt;
+  }
+
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  /* No `size` here: export's page.pdf() passes explicit width/height (the
+     manifest media box). A literal `@page size` would define the LAYOUT page
+     box independently of that — content would flow into an 8.5x11 region pinned
+     top-left of the larger media box, leaving the bleed area white. Omitting
+     size lets page.pdf's dimensions drive both the media box AND layout, so
+     bleed geometry survives into the PDF. */
+  @page{ margin:0; }
+  html,body{ background:#525252; }
+  body{
+    font-family:"Lato",Arial,sans-serif; color:var(--ink);
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  /* ---- Bleed geometry (export only) -----------------------------------
+     Purely ADDITIVE over the trim render, all driven by --bleed (set from
+     manifest.bleedIn; 0pt = trim, so preview/QA are unchanged):
+
+     .page is the MEDIA box (trim + 2*bleed) with plain overflow:hidden, so it
+     clips at the media edge. We use a structural inner .sheet rather than a
+     border/padding/overflow-clip trick: padding doesn't move the abspos origin,
+     a border does but then overflow:hidden clips at the trim edge (inkless
+     bleed), and overflow-clip-margin fixes that ON SCREEN but is DROPPED in
+     Chromium's PDF pipeline (verified — real PDF had white strips). Plain
+     overflow:hidden on a media-sized box is the one mechanism that survives
+     print. .sheet is the trim area, offset by --bleed and acting as the
+     containing block, so inset content keeps its exact trim coordinates; the
+     full-bleed photos extend past .sheet to the media edge and .page clips them
+     there. No crop marks in v1. */
+  .page{
+    position:relative;
+    width:calc(var(--trim-w) + 2*var(--bleed));
+    height:calc(var(--trim-h) + 2*var(--bleed));
+    background:#fff; overflow:hidden; margin:24px auto; box-shadow:0 4px 22px rgba(0,0,0,.45);
+  }
+  /* The trim area: origin re-located by --bleed, the containing block for all
+     inset content. At --bleed:0 it fills .page (trim), so trim mode is a no-op. */
+  .sheet{
+    position:absolute; left:var(--bleed); top:var(--bleed);
+    width:var(--trim-w); height:var(--trim-h);
+  }
+  @media print{
+    html,body{ background:#fff; }
+    .page{ margin:0; box-shadow:none; page-break-after:always; }
+    .page:last-child{ page-break-after:auto; }
+  }
+
+  /* Full-bleed overscan: each edge photo widens/moves by --bleed so it reaches
+     the media edge. One rule per full-bleed element. */
+  body.mb-bleed .backyard{
+    left:calc(-1*var(--bleed)); width:calc(612pt + 2*var(--bleed)); height:calc(384pt + var(--bleed));
+  }
+  body.mb-bleed .p2-photo-tl{
+    left:calc(-1*var(--bleed)); top:calc(-1*var(--bleed));
+    width:calc(298pt + var(--bleed)); height:calc(284pt + var(--bleed));
+  }
+  body.mb-bleed .p2-photo-tr{
+    top:calc(-1*var(--bleed));
+    width:calc(298pt + var(--bleed)); height:calc(284pt + var(--bleed));
+  }
+
+  .abs{ position:absolute; }
+  img{ display:block; }
+
+  /* ---- Edit mode (editor only; never affects print/standalone) --------- */
+  .mb-editmode [data-field]{ cursor:pointer; }
+  .mb-editmode img[data-field]{ cursor:grab; }
+  .mb-editmode img[data-field]:active{ cursor:grabbing; }
+  .mb-editable-hover{ outline:2px solid #5b8cff !important; outline-offset:1px; }
+  .mb-editable-active{ outline:2px solid #ffb020 !important; outline-offset:1px; }
+  /* Over-length field flagged by the editor (too long for its box). */
+  .mb-overflow{ outline:2px dashed #e05656 !important; outline-offset:2px; }
+  @media print{ .mb-editable-hover, .mb-editable-active, .mb-overflow{ outline:none !important; } }
+  #mb-img-hint{
+    position:fixed; z-index:99999; pointer-events:none; display:none;
+    transform:translateX(-50%);
+    background:rgba(15,17,21,.85); color:#fff; border-radius:6px;
+    padding:5px 9px; white-space:nowrap;
+    font:500 11px/1.2 "Lato",Arial,sans-serif; letter-spacing:.2px;
+    box-shadow:0 2px 10px rgba(0,0,0,.4);
+  }
+  @media print{ #mb-img-hint{ display:none !important; } }
+
+  /* =====================  PAGE 1  (CUSTOMIZE per template)  ============= */
+  .frame{ left:36pt; top:48pt; width:540pt; height:308pt; border:0.6pt solid var(--line); }
+  .title-mask{ left:73pt; top:14pt; width:466pt; height:46pt; background:#fff; }
+  .title{ left:0; right:0; top:25pt; text-align:center; font-family:"BornReady",cursive; font-size:43pt; line-height:1; color:var(--navy); }
+  .hero{ left:50pt; top:89pt; width:512pt; height:254pt; background:var(--photo-bg); overflow:hidden; }
+  .hero img{ width:100%; height:100%; object-fit:cover; }
+  .open-house{ left:89pt; top:305pt; width:434pt; height:38pt; background:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:10pt; color:var(--ink); letter-spacing:1.6pt; }
+  .open-house b{ font-weight:700; }
+  .open-house .reg{ font-weight:400; }
+  .address-bar{ left:36pt; top:367pt; width:540pt; height:16pt; background:var(--navy); color:#fff;
+    display:flex; align-items:center; justify-content:center; font-size:10pt; letter-spacing:2.4pt; }
+  .address-bar b{ font-weight:700; }
+  .address-bar .reg{ font-weight:400; }
+  .stats{ left:89pt; top:401pt; width:434pt; height:47pt; background:#fff;
+    display:flex; align-items:center; justify-content:space-between; padding:0 22pt; }
+  .stat{ display:flex; align-items:center; gap:11pt; }
+  .stat-num{ font-size:12pt; color:var(--ink); }
+  .stat-ico{ height:24pt; width:auto; }
+  .stat .stat-ico.bath{ height:21pt; }
+  .stat .stat-ico.lot{ height:20pt; }
+  .divider{ width:0.6pt; height:26pt; background:#c9c9ca; }
+  .backyard{ left:0; top:408pt; width:612pt; height:384pt; background:var(--photo-bg); overflow:hidden; }
+  .backyard img{ width:100%; height:100%; object-fit:cover; }
+  .watermark{ left:0; right:0; top:731pt; text-align:center; }
+  .watermark img{ width:150pt; height:auto; margin:0 auto; }
+
+  /* =====================  PAGE 2  (CUSTOMIZE per template)  ============= */
+  .p2-photo-tl{ left:0; top:0; width:298pt; height:284pt; background:var(--photo-bg); overflow:hidden; }
+  .p2-photo-tr{ left:314pt; top:0; width:298pt; height:284pt; background:var(--photo-bg); overflow:hidden; }
+  .p2-photo-tl img,.p2-photo-tr img{ width:100%; height:100%; object-fit:cover; }
+  .p2-mid{ left:58pt; top:250pt; width:498pt; height:127pt; display:flex; justify-content:space-between; }
+  .p2-mid .cell{ width:157pt; height:127pt; background:var(--photo-bg); overflow:hidden; }
+  .p2-mid .cell img{ width:100%; height:100%; object-fit:cover; }
+  .description{ left:73pt; top:396pt; width:469pt; font-size:10pt; line-height:14.3pt; color:var(--body); text-align:justify; }
+  .headshot{ left:72pt; top:642pt; width:65pt; height:98pt; background:var(--photo-bg); overflow:hidden; }
+  .headshot img{ width:100%; height:100%; object-fit:cover; }
+  .hosted{ left:145pt; top:640pt; width:200pt; color:var(--black); }
+  .hosted .label{ font-weight:500; font-size:11pt; }
+  .hosted .name{ font-weight:700; font-size:12.3pt; margin-top:1pt; }
+  .hosted .creds{ font-weight:700; font-size:8pt; line-height:10pt; margin-top:1pt; }
+  .hosted .contact{ font-weight:500; font-size:10pt; line-height:12pt; margin-top:5pt; }
+  .hosted .dre{ font-weight:400; font-size:8pt; margin-top:4pt; }
+  .ag-logo{ left:291pt; top:661pt; width:94pt; text-align:center; }
+  .ag-logo img{ width:100%; height:auto; }
+  .listing{ right:62pt; top:646pt; width:240pt; text-align:right; color:var(--black); }
+  .listing .label{ font-weight:500; font-size:11pt; }
+  .listing .firm{ font-weight:500; font-size:11pt; line-height:13pt; }
+  .listing .name{ font-weight:700; font-size:12.3pt; margin-top:3pt; }
+  .listing .role{ font-weight:700; font-size:8pt; margin-top:1pt; }
+  .listing .contact{ font-weight:500; font-size:10pt; margin-top:5pt; }
+  .listing .dre{ font-weight:400; font-size:8pt; margin-top:3pt; }
+  .footer{ left:73pt; top:754pt; width:466pt; text-align:center; color:var(--body); }
+  .footer .f1{ font-weight:500; font-size:5.4pt; line-height:7pt; }
+  .footer .f2{ font-weight:300; font-size:5.4pt; line-height:7pt; margin-top:1pt; }
+</style>
+</head>
+<body>
+
+<!-- ============================ PAGE 1 (CUSTOMIZE DOM) ============================ -->
+<section class="page" id="page1">
+ <div class="sheet">
+  <div class="abs frame"></div>
+  <div class="abs title-mask"></div>
+  <div class="abs title" id="f-headline" data-field="headline"></div>
+
+  <div class="abs hero"><img id="f-hero" data-field="photos.hero" alt="Front entry"></div>
+
+  <div class="abs open-house">
+    <b>OPEN&nbsp;HOUSE</b><span class="reg">&nbsp;&nbsp;|&nbsp;&nbsp;<span id="f-openhouse" data-field="openHouse"></span></span>
+  </div>
+
+  <div class="abs address-bar">
+    <b id="f-address" data-field="address"></b><span class="reg">&nbsp;&nbsp;|&nbsp;&nbsp;<span id="f-city" data-field="city"></span></span>
+  </div>
+
+  <div class="abs stats">
+    <div class="stat"><span class="stat-num" id="f-beds" data-field="stats.beds"></span><img class="stat-ico bed"  src="assets/icon_bed.png"  alt="beds"></div>
+    <div class="divider"></div>
+    <div class="stat"><span class="stat-num" id="f-baths" data-field="stats.baths"></span><img class="stat-ico bath" src="assets/icon_bath.png" alt="baths"></div>
+    <div class="divider"></div>
+    <div class="stat"><span class="stat-num" id="f-sqft" data-field="stats.sqft"></span><img class="stat-ico sqft" src="assets/icon_sqft.png" alt="sq ft"></div>
+    <div class="divider"></div>
+    <div class="stat"><span class="stat-num" id="f-lot" data-field="stats.lot"></span><img class="stat-ico lot"  src="assets/icon_lot.png"  alt="lot sq ft"></div>
+  </div>
+
+  <div class="abs backyard"><img id="f-backyard" data-field="photos.backyard" alt="Backyard"></div>
+  <div class="abs watermark"><img id="f-wm" data-field="watermark.logo" alt="Watermark"></div>
+ </div>
+</section>
+
+<!-- ============================ PAGE 2 (CUSTOMIZE DOM) ============================ -->
+<section class="page" id="page2">
+ <div class="sheet">
+  <div class="abs p2-photo-tl"><img id="f-tl" data-field="photos.topLeft" alt="Interior"></div>
+  <div class="abs p2-photo-tr"><img id="f-tr" data-field="photos.topRight" alt="Interior"></div>
+
+  <div class="abs p2-mid">
+    <div class="cell"><img id="f-mid1" data-field="photos.mid" data-index="0" alt="Interior"></div>
+    <div class="cell"><img id="f-mid2" data-field="photos.mid" data-index="1" alt="Interior"></div>
+    <div class="cell"><img id="f-mid3" data-field="photos.mid" data-index="2" alt="Interior"></div>
+  </div>
+
+  <p class="abs description" id="f-description" data-field="description"></p>
+
+  <div class="abs headshot"><img id="f-headshot" data-field="photos.headshot" alt="Agent"></div>
+
+  <div class="abs hosted" data-group="Hosting agent">
+    <div class="label"   id="f-h-label"></div>
+    <div class="name"    id="f-h-name"    data-field="hostedBy.name"></div>
+    <div class="creds"   id="f-h-creds"   data-field="hostedBy.creds"></div>
+    <div class="contact" id="f-h-contact" data-field="hostedBy.contact"></div>
+    <div class="dre"     id="f-h-dre"     data-field="hostedBy.dre"></div>
+  </div>
+
+  <div class="abs ag-logo"><img id="f-logo" data-field="photos.agentLogo" alt="Agent logo"></div>
+
+  <div class="abs listing" data-group="Listing agent">
+    <div class="label"   id="f-l-label"></div>
+    <div class="firm"    id="f-l-firm"    data-field="listingBy.firm"></div>
+    <div class="name"    id="f-l-name"    data-field="listingBy.name"></div>
+    <div class="role"    id="f-l-role"></div>
+    <div class="contact" id="f-l-contact" data-field="listingBy.contact"></div>
+    <div class="dre"     id="f-l-dre"     data-field="listingBy.dre"></div>
+  </div>
+
+  <div class="abs footer">
+    <div class="f1" id="f-foot1" data-field="footer.line1"></div>
+    <div class="f2" id="f-foot2" data-field="footer.line2"></div>
+  </div>
+ </div>
+</section>
+
+<!-- =====================  RENDER + EDITOR INTEGRATION  ===================== -->
+<!-- Everything below is PLATFORM CONTRACT. Reproduce verbatim EXCEPT the body of
+     render(), which you rewrite to bind YOUR fields. -->
+<script>
+  const $ = id => document.getElementById(id);
+  const text = (id, v) => { const el = $(id); if (el) el.textContent = v ?? ""; };
+  const html = (id, v) => { const el = $(id); if (el) el.innerHTML = v ?? ""; };
+  const esc  = s => (s ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const lines = arr => (arr || []).map(esc).join("<br>");
+
+  // An image value is either "url" OR { src, crop:{x,y,scale} }. The crop is a
+  // non-destructive pan (x,y in 0..1) + zoom (scale >= 1) applied to the <img> —
+  // NO pixel editing, and it lives in data so preview, QA, and export all show
+  // the identical framing.
+  function applyImg(id, value) {
+    const el = $(id);
+    if (!el) return;
+    const src = typeof value === "string" ? value : (value && value.src) || "";
+    el.src = src;
+    const crop = value && typeof value === "object" ? value.crop : null;
+    if (crop) {
+      const x = (crop.x ?? 0.5) * 100;
+      const y = (crop.y ?? 0.5) * 100;
+      const scale = crop.scale ?? 1;
+      el.style.objectPosition = x + "% " + y + "%";
+      el.style.transformOrigin = x + "% " + y + "%";
+      el.style.transform = "scale(" + scale + ")";
+    } else {
+      el.style.objectPosition = "50% 50%";
+      el.style.transformOrigin = "50% 50%";
+      el.style.transform = "none";
+    }
+  }
+
+  // ===== CUSTOMIZE: only the BINDINGS inside render() change per template. =====
+  // Keep the bleed handling at the top exactly as-is.
+  function render(d, opts) {
+    if (!d) return;
+    // Bleed mode is export-only and purely additive; preview/QA omit opts.
+    const bleedOn = !!(opts && opts.bleed);
+    document.body.classList.toggle("mb-bleed", bleedOn);
+    if (bleedOn) {
+      const bi = typeof opts.bleedIn === "number" ? opts.bleedIn : 0.125;
+      document.documentElement.style.setProperty("--bleed", bi + "in");
+    } else {
+      document.documentElement.style.removeProperty("--bleed");
+    }
+
+    // ---- field bindings (rewrite this block for your schema/data) ----
+    text("f-headline", d.headline || "");
+    text("f-openhouse", d.openHouse);
+    text("f-address", d.address);
+    text("f-city", d.city);
+    text("f-beds",  d.stats?.beds);
+    text("f-baths", d.stats?.baths);
+    text("f-sqft",  d.stats?.sqft);
+    text("f-lot",   d.stats?.lot);
+    text("f-description", d.description);
+
+    html("f-h-label",   esc(d.hostedBy?.label));
+    html("f-h-name",    esc(d.hostedBy?.name));
+    html("f-h-creds",   lines(d.hostedBy?.creds));
+    html("f-h-contact", lines(d.hostedBy?.contact));
+    html("f-h-dre",     esc(d.hostedBy?.dre));
+
+    html("f-l-label",   esc(d.listingBy?.label));
+    html("f-l-firm",    esc(d.listingBy?.firm));
+    html("f-l-name",    esc(d.listingBy?.name));
+    html("f-l-role",    esc(d.listingBy?.role));
+    html("f-l-contact", lines(d.listingBy?.contact));
+    html("f-l-dre",     esc(d.listingBy?.dre));
+
+    applyImg("f-wm", d.watermark?.logo);
+    text("f-foot1", d.footer?.line1);
+    text("f-foot2", d.footer?.line2);
+
+    const p = d.photos || {};
+    applyImg("f-hero",     p.hero);
+    applyImg("f-backyard", p.backyard);
+    applyImg("f-tl",       p.topLeft);
+    applyImg("f-tr",       p.topRight);
+    applyImg("f-mid1",     p.mid?.[0]);
+    applyImg("f-mid2",     p.mid?.[1]);
+    applyImg("f-mid3",     p.mid?.[2]);
+    applyImg("f-headshot", p.headshot);
+    applyImg("f-logo",     p.agentLogo);
+    // ---- end field bindings ----
+  }
+
+  // The headless QA + export call this EXACT name. Do not rename.
+  window.renderFlyer = render;
+
+  // ===== VERBATIM BELOW: edit-mode + messaging + boot. Do not modify. =====
+  let editMode = false;
+
+  function fieldKeyOf(el) {
+    if (!el || !el.dataset || el.dataset.field == null) return null;
+    const idx = el.dataset.index;
+    return idx != null ? `${el.dataset.field}[${idx}]` : el.dataset.field;
+  }
+  function nodeForKey(key) {
+    const m = key.match(/^(.*?)(?:\[(\d+)\])?$/);
+    const base = m[1], idx = m[2];
+    if (idx != null)
+      return document.querySelector(`[data-field="${base}"][data-index="${idx}"]`);
+    return document.querySelector(`[data-field="${base}"]`);
+  }
+
+  let imgHint;
+  function showImgHint(img) {
+    if (!imgHint) {
+      imgHint = document.createElement("div");
+      imgHint.id = "mb-img-hint";
+      imgHint.textContent = "Drag to reposition · Alt/⌘ + scroll to zoom";
+      document.body.appendChild(imgHint);
+    }
+    const r = img.getBoundingClientRect();
+    imgHint.style.left = r.left + r.width / 2 + "px";
+    imgHint.style.top = r.top + 8 + "px";
+    imgHint.style.display = "block";
+  }
+  function hideImgHint() { if (imgHint) imgHint.style.display = "none"; }
+
+  document.addEventListener("mouseover", (e) => {
+    if (!editMode) return;
+    const el = e.target.closest("[data-field]");
+    if (el) el.classList.add("mb-editable-hover");
+    if (el && el.tagName === "IMG") showImgHint(el);
+    else hideImgHint();
+  });
+  document.addEventListener("mouseout", (e) => {
+    const el = e.target.closest && e.target.closest("[data-field]");
+    if (el) el.classList.remove("mb-editable-hover");
+    if (el && el.tagName === "IMG") hideImgHint();
+  });
+  document.addEventListener("click", (e) => {
+    if (!editMode) return;
+    const el = e.target.closest("[data-field]");
+    if (!el) return;
+    if (el.tagName === "IMG") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const key = fieldKeyOf(el);
+    const group = el.closest("[data-group]");
+    const r = el.getBoundingClientRect();
+    window.parent.postMessage(
+      { type: "element-clicked", fieldKey: key, group: group ? group.dataset.group : null,
+        top: r.top + window.scrollY, height: r.height },
+      "*",
+    );
+  }, true);
+
+  let imgGesture = null;
+  let imgPending = null;
+  const TOUCH_SLOP = 18;
+
+  document.addEventListener("pointerdown", (e) => {
+    if (!editMode) return;
+    const img = e.target.closest("img[data-field]");
+    if (!img) return;
+    const key = fieldKeyOf(img);
+    const r = img.getBoundingClientRect();
+    const top = r.top + window.scrollY;
+    if (e.pointerType === "touch" && img !== activeEl) {
+      imgPending = { key, sx: e.clientX, sy: e.clientY, top };
+      return;
+    }
+    e.preventDefault();
+    imgGesture = { key, sx: e.clientX, sy: e.clientY, w: r.width || 1, h: r.height || 1, top, moved: false };
+    try { img.setPointerCapture(e.pointerId); } catch (_) {}
+    img.style.touchAction = "none";
+    hideImgHint();
+    window.parent.postMessage({ type: "img-grab", fieldKey: key }, "*");
+  }, true);
+
+  document.addEventListener("pointermove", (e) => {
+    if (imgPending) {
+      const dx = e.clientX - imgPending.sx, dy = e.clientY - imgPending.sy;
+      if (dx * dx + dy * dy > TOUCH_SLOP * TOUCH_SLOP) imgPending = null;
+      return;
+    }
+    if (!imgGesture) return;
+    const dx = e.clientX - imgGesture.sx, dy = e.clientY - imgGesture.sy;
+    if (Math.abs(dx) + Math.abs(dy) > 3) imgGesture.moved = true;
+    window.parent.postMessage(
+      { type: "img-pan", fieldKey: imgGesture.key, dxFrac: dx / imgGesture.w, dyFrac: dy / imgGesture.h },
+      "*",
+    );
+  });
+
+  document.addEventListener("pointerup", () => {
+    if (imgPending) {
+      const p = imgPending;
+      imgPending = null;
+      window.parent.postMessage({ type: "img-grab", fieldKey: p.key }, "*");
+      window.parent.postMessage({ type: "img-release", fieldKey: p.key, moved: false, top: p.top }, "*");
+      return;
+    }
+    if (!imgGesture) return;
+    window.parent.postMessage(
+      { type: "img-release", fieldKey: imgGesture.key, moved: imgGesture.moved, top: imgGesture.top },
+      "*",
+    );
+    imgGesture = null;
+  });
+
+  document.addEventListener("pointercancel", () => {
+    imgPending = null;
+    if (imgGesture) {
+      window.parent.postMessage(
+        { type: "img-release", fieldKey: imgGesture.key, moved: imgGesture.moved, top: imgGesture.top },
+        "*",
+      );
+      imgGesture = null;
+    }
+  });
+  document.addEventListener("wheel", (e) => {
+    if (!editMode) return;
+    const img = e.target.closest("img[data-field]");
+    if (!img) return;
+    if (!(e.altKey || e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    window.parent.postMessage({ type: "img-zoom", fieldKey: fieldKeyOf(img), delta: -e.deltaY }, "*");
+  }, { passive: false });
+
+  let activeEl = null;
+  function setActive(el) {
+    if (activeEl) {
+      activeEl.classList.remove("mb-editable-active");
+      if (activeEl.tagName === "IMG") activeEl.style.touchAction = "";
+    }
+    activeEl = el;
+    if (el) {
+      el.classList.add("mb-editable-active");
+      if (el.tagName === "IMG") el.style.touchAction = "none";
+    }
+  }
+
+  window.addEventListener("message", (e) => {
+    const msg = e.data || {};
+    if (msg.type === "render") render(msg.data);
+    else if (msg.type === "set-edit-mode") {
+      editMode = !!msg.on;
+      document.body.classList.toggle("mb-editmode", editMode);
+      if (!editMode) { setActive(null); hideImgHint(); }
+    } else if (msg.type === "highlight") setActive(nodeForKey(msg.fieldKey));
+    else if (msg.type === "clear-highlight") setActive(null);
+    else if (msg.type === "mark-overflow") {
+      document.querySelectorAll(".mb-overflow").forEach((n) => n.classList.remove("mb-overflow"));
+      (msg.keys || []).forEach((k) => {
+        const n = nodeForKey(k) || document.querySelector(`[data-field="${k.replace(/\[\d+\]$/, "")}"]`);
+        if (n) n.classList.add("mb-overflow");
+      });
+    }
+  });
+
+  (async function boot() {
+    if (window.__FLYER_DATA__) {
+      render(window.__FLYER_DATA__);
+    } else {
+      try {
+        const res = await fetch("./data.json", { cache: "no-store" });
+        if (res.ok) render(await res.json());
+      } catch (_) { /* opened via file:// with no inline data — stays blank */ }
+    }
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ type: "template-ready" }, "*");
+    }
+  })();
+</script>
+
+</body>
+</html>

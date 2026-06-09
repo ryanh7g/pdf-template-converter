@@ -1,0 +1,6 @@
+{
+  "name": "pdf-template-converter",
+  "version": "1.0.0",
+  "description": "Convert a print-ready PDF (flyer, business card, postcard) into a self-contained Marketing-Builder template folder, with automated geometry probing, asset extraction, and visual self-verification.",
+  "author": { "name": "Seven Gables — Marketing" }
+}

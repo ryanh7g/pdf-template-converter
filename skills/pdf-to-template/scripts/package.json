@@ -1,0 +1,17 @@
+{
+  "name": "pdf-to-template-engine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Helper scripts for the pdf-to-template skill: probe / render / crop / sample / self-check / screenshot / export.",
+  "scripts": {
+    "preflight": "node preflight.mjs"
+  },
+  "dependencies": {
+    "pdfjs-dist": "4.0.379",
+    "mupdf": "1.3.5",
+    "sharp": "0.33.5",
+    "fontkit": "2.0.4",
+    "puppeteer": "23.11.1"
+  }
+}
