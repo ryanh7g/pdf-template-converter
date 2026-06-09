@@ -1,0 +1,12 @@
+{
+  "name": "seven-gables-marketing",
+  "owner": { "name": "Seven Gables — Marketing" },
+  "plugins": [
+    {
+      "name": "pdf-template-converter",
+      "source": "./",
+      "description": "Convert print-ready PDFs (flyer, business card, postcard) into self-contained Marketing Builder template folders, with automated geometry probing, asset extraction, and visual self-verification.",
+      "version": "1.0.0"
+    }
+  ]
+}
