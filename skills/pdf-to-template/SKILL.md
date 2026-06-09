@@ -6,8 +6,10 @@ description: >-
   (manifest.json, schema.json, data.json, rules.json, template.html, fonts/,
   assets/, thumbnail.jpg). Use when the user gives a PDF and asks to turn it
   into an editable template, convert it for the marketing platform, or
-  "templatize" a finished design. Handles trim/bleed, page rotation, font
-  sourcing/substitution, asset extraction, and automated visual self-checks.
+  "templatize" a finished design. Produces manifest/schema/data/rules/mapping
+  JSON + template.html + fonts/assets/thumbnail. Handles trim/bleed, page
+  rotation, font sourcing/substitution, asset extraction, MLS listing autofill
+  (mapping.json + photo roles), and automated visual self-checks.
 allowed-tools: >-
   Bash(node *), Bash(npm *), Bash(npx *), Read, Write, Edit, Glob, Grep,
   AskUserQuestion
@@ -32,9 +34,14 @@ gates below — especially fonts.
 ## Method
 
 **0. Preflight (always first).**
-`node $SCRIPTS/preflight.mjs` — installs deps and confirms a headless browser.
-If it exits non-zero, relay its plain-English message to the user and stop; do
-not try to hand-fix the toolchain.
+`node $SCRIPTS/preflight.mjs` — installs deps and prints a **MODE** line. If it
+exits non-zero, relay its plain-English message and stop; do not hand-fix the
+toolchain. Note the mode:
+- **full** — a headless browser is available; do the pixel-accurate visual checks.
+- **no-browser** — no Chromium (e.g. a Claude Cowork session). `shoot.mjs` and
+  `export-pdf.mjs` CANNOT run; do **not** call them (they'll just fail). Use the
+  browser-free verification path in step 7 instead. Everything else (probe, render
+  the source, selfcheck, fontcheck) works unchanged.
 
 **1. Probe.** `node $SCRIPTS/probe.mjs <pdf>` → JSON: pages, rotation,
 `trimPt`/`trimIn`, `bleedIn`, `bleedOffsetPt`, every text run in DISPLAY coords
@@ -86,24 +93,52 @@ bleed CSS structure and the entire edit-mode/messaging/boot JS.
   for list images), plus a matching `render()` binding.
 
 **6. Write the JSON.** `data.json` (real extracted content + fixed render-only
-strings), `schema.json` (editable subset; compute image `aspect`/`minPx` per the
-contract), `rules.json` (thorough `pageIntent`, `subsetFonts`, font notes),
-`manifest.json` (`id` MUST equal the folder name; list every font + asset).
+strings), `schema.json` (editable subset; compute image `aspect`/`minPx`; **tag
+image fields — `role:"property"` + `classifyHints` on listing photos,
+`brandingAsset:true`/`role:"branding"` on headshot/logo** — per the contract),
+`rules.json` (thorough `pageIntent`, `subsetFonts`, font notes), `manifest.json`
+(`id` MUST equal the folder name; list every font + asset).
 
-**7. Self-verify (all must pass).** Serve, then:
-- `node $SCRIPTS/serve.cjs <templateDir> 8137 &`
-- `node $SCRIPTS/selfcheck.mjs <templateDir>` — four-way sync + constraints + self-containment.
+**6b. Write `mapping.json`** (contract §5.5) — UNLESS the template is branding-only.
+Map the listing-derived text keys (address, city, stats.*, description) to `${RESO}`
+tokens (`${StreetNumber}`, `${City}`, `${BedroomsTotal}`, `${PublicRemarks}`, …).
+This is what fills a design from an MLS listing; omit it and the template renders
+perfectly but fills NOTHING from a listing. Photos fill via the `role:"property"`
+tags from step 6, not here.
+
+**7. Self-verify.** These run in BOTH modes (no browser needed) and must pass:
+- `node $SCRIPTS/selfcheck.mjs <templateDir>` — four-way sync + constraints + the MLS
+  layer (mapping keys ⊆ schema text keys; valid image `role`s; missing-asset on disk;
+  warns if a listing template has no `mapping.json` or no `role:"property"` photos).
 - `node $SCRIPTS/verbatim-diff.mjs <templateDir>` — contract JS zone unchanged.
+- `node $SCRIPTS/fontcheck.mjs <font> "<the actual data.json strings>"` for each bundled
+  face — confirms real glyph coverage (this is how you catch blank-glyph risk WITHOUT
+  rendering, which matters most in no-browser mode).
+- `node $SCRIPTS/render.mjs <pdf> work 300` — render the SOURCE pages; **open them and
+  read them yourself**, then cross-check each element's position/size against your
+  template's absolute `.sheet` pt coordinates (same coordinate space as the probe) and
+  against `data.json` content. This is your geometry/typography/content audit.
+
+**Full mode only** (pixel-accurate visual — skip entirely in no-browser mode):
+- `node $SCRIPTS/serve.cjs <templateDir> 8137 &`
 - `SHOOT_SEL="#page1" node $SCRIPTS/shoot.mjs http://localhost:8137/template.html work/r1.png 850 1100`
-  (one per page) — must report no console/asset errors (catches blank glyphs / missing images).
-- `node $SCRIPTS/compare.mjs work/page-1.png work/r1.png work/cmp1.jpg` — open it and
-  fix geometry/typography drift against the original.
+  (one per page) — must report no console/asset errors.
+- `node $SCRIPTS/compare.mjs work/page-1.png work/r1.png work/cmp1.jpg` — open it and fix drift.
 - If `bleedIn > 0`: `node $SCRIPTS/export-pdf.mjs <url> work/out.pdf <mediaWin> <mediaHin> <bleedIn>`,
-  rerender it, and confirm backgrounds reach all four media edges (no white strips).
-- Generate `thumbnail.jpg` from the page-1 screenshot; set `manifest.thumbnail`.
+  rerender, confirm backgrounds reach all four media edges.
+
+**Thumbnail.** Full mode: from the page-1 screenshot. No-browser mode: from the page-1
+SOURCE render (`work/page-1.png` → `sharp` resize → `thumbnail.jpg`) — the template
+reproduces the source, so it's a faithful stand-in. Set `manifest.thumbnail`.
 
 **8. Report** honestly: state any font substitution, low-res default image, or
-guessed measurement — those are what a human must confirm before shipping.
+guessed measurement. **For a listing template, also list its agent-branding keys
+and note a developer must register them in the app branding map** (contract §5.5) —
+the skill can't wire branding from the folder alone — so the agent block fills.
+**If you ran in no-browser mode, say so explicitly:** the template was verified
+structurally + against the source render, but NOT pixel-rendered — a visual pass in
+a browser-capable environment is still recommended before it ships. Those are what a
+human must confirm before shipping.
 
 ## Gotchas (hard-won)
 - **manifest.id == folder name**, always. The editor 404s otherwise.
@@ -115,3 +150,11 @@ guessed measurement — those are what a human must confirm before shipping.
   licensed face or declare `fontSubset:true` + `rules.json.subsetFonts`.
 - **`@page` must NOT set `size`** — the exporter passes explicit width/height.
 - **Never edit the verbatim JS** outside `render()`'s body; `verbatim-diff.mjs` enforces this.
+- **No `mapping.json` → fills nothing from a listing.** The most common "looks
+  perfect but is inert" failure. Real-estate templates need it; only branding-only
+  ones (business cards) skip it.
+- **Photos need `role:"property"`.** An image field without it never receives an
+  MLS/uploaded photo, no matter how good `classifyHints` is.
+- **Agent branding is app-side code, per template.** The skill can't make the agent
+  block fill on its own — it must REPORT the template's agent keys for a dev to
+  register (contract §5.5). Use the standard keys so that's one line.

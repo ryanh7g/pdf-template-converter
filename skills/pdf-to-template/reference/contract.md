@@ -55,6 +55,7 @@ editor-consumable unit the platform reads to drive editing, QA, and export.
 ├── schema.json           # the EDITABLE-content contract (the AI's allow-list) (§3)
 ├── data.json             # default/sample content the layout is filled with   (§4)
 ├── rules.json            # template-aware QA rubric + design intent            (§5)
+├── mapping.json          # MLS listing-field → schema-key autofill (§5.5)      — REQUIRED for listing-fillable templates; OMIT for branding-only (e.g. a business card)
 ├── template.html         # self-contained fixed-layout page + render()         (§6)
 ├── thumbnail.jpg         # gallery preview image (render of page 1)            (§9)
 ├── fonts/                # every font used, embeddable, licensed
@@ -157,7 +158,9 @@ Exact shape:
     description: string;   // tells the AI the field's INTENT — write these well
     required: boolean;
     fontSubset?: boolean;  // true if this field is rendered in a SUBSET font (§7)
-    brandingAsset?: boolean; // headshot/logo: the 300-DPI minPx is advisory, not blocking
+    brandingAsset?: boolean; // headshot/logo: the 300-DPI minPx is advisory, not blocking (CONSUMED — relaxes the export gate)
+    role?: "property" | "branding"; // image fields only (§5.5). "property" = REQUIRED on any photo slot that should receive an uploaded/MLS listing photo — without it the slot never auto-fills. "branding" = headshot/logo marker (convention; the value is filled by the app's agent branding, not by role).
+    classifyHints?: string[];        // "property" images only: keywords the photo classifier matches to choose WHICH listing photo lands here (e.g. ["exterior","kitchen"]). Optional — improves placement quality; slots still fill (best match, then MLS order) without it.
     constraints?: {
       maxChars?: number;   // text/richText: fixed boxes DON'T reflow — length is validated
       maxLines?: number;
@@ -177,7 +180,18 @@ Field-type guide:
 - `richText` — longer body copy in a fixed box (e.g. a property description). Still
   length-validated by `maxChars`/`maxLines`.
 - `image` — one photo/logo. Give `aspect` and `minPx`; add `fullBleed: true` for
-  edge-to-edge art.
+  edge-to-edge art. **Then tag it for the listing flow (§5.5):**
+  - A **property photo** (anything that should be filled from an MLS listing's
+    photos) MUST get `"role": "property"`, plus `classifyHints` keywords for which
+    shot belongs there (`["exterior","front"]`, `["interior","kitchen"]`, …).
+    Without `role:"property"` the slot is invisible to MLS photo placement and
+    stays on its default forever. A `list` with `itemType:"image"` can also be
+    `role:"property"` — it expands to one listing-photo slot per item (e.g. a row
+    of three interior shots).
+  - An **agent headshot or logo** gets `"brandingAsset": true` (relaxes the 300-DPI
+    export gate for directory art) and is conventionally marked `"role": "branding"`.
+    Its value is filled by the app's agent-branding step, not by the listing — see
+    the branding note in §5.5.
 - `list` — an ordered set. With `itemType:"text"` it's repeated lines (e.g. contact
   lines). With `itemType:"image"` it's a fixed row of photos (e.g. exactly 3).
 - `enum` — one value from `constraints.values`.
@@ -217,20 +231,28 @@ Reference excerpt (`ravenswood/schema.json`):
 
     { "key": "photos.hero", "type": "image", "label": "Hero photo (front entry)",
       "description": "Main photo inside the framed area on page 1.",
-      "required": true, "constraints": { "aspect": "512:254", "minPx": [2133, 1058] } },
+      "required": true, "role": "property", "classifyHints": ["exterior", "front", "facade", "entry", "curb"],
+      "constraints": { "aspect": "512:254", "minPx": [2133, 1058] } },
 
     { "key": "photos.backyard", "type": "image", "label": "Backyard photo (full-bleed)",
       "description": "Full-bleed photo across the bottom of page 1; must cover trim + bleed.",
-      "required": true,
+      "required": true, "role": "property", "classifyHints": ["backyard", "yard", "pool", "patio", "outdoor", "exterior"],
       "constraints": { "aspect": "612:384", "minPx": [2550, 1600], "fullBleed": true } },
 
-    { "key": "photos.mid", "type": "list", "itemType": "image",
-      "label": "Mid-row interior photos (page 2)",
-      "description": "Row of three interior photos on page 2 (exactly 3).",
-      "required": true, "constraints": { "aspect": "157:127", "minPx": [654, 529] } }
+    { "key": "photos.headshot", "type": "image", "label": "Agent headshot",
+      "description": "Hosting agent headshot on page 2 (filled from the agent directory, not the listing).",
+      "required": true, "role": "branding", "brandingAsset": true,
+      "constraints": { "aspect": "62:80", "minPx": [261, 335] } }
   ]
 }
 ```
+
+> The two photo fields above carry `role:"property"` + `classifyHints` (verbatim
+> from the shipped `ravenswood/schema.json`) and the headshot carries
+> `role:"branding"` + `brandingAsset:true`. An earlier draft of this contract
+> dropped the `role`/`classifyHints` keys — that omission is exactly why a
+> hand-authored template renders fine but fills nothing from a listing. Always
+> tag image fields.
 
 ---
 
@@ -351,6 +373,87 @@ Reference (`ravenswood/rules.json`):
   }
 }
 ```
+
+---
+
+## 5.5 `mapping.json` — MLS listing autofill (REQUIRED for listing templates)
+
+When an agent creates a design **from an MLS listing**, the platform auto-fills the
+template from that listing before they edit. That fill is driven entirely by
+`mapping.json`. **Without this file the listing fill is silently skipped** — every
+text field stays on its `data.json` default (this is a real, shipped failure mode:
+a template that renders perfectly but "doesn't replace any content" from a listing).
+A branding-only template with no listing data (e.g. a business card) legitimately
+omits the file.
+
+Shape:
+
+```json
+{
+  "fields": {
+    "<schema-key>": "<string with ${ResoToken} placeholders>"
+  }
+}
+```
+
+- Each entry maps a **text/richText** schema key → a template string. `${Token}`
+  interpolates against the listing (a RESO record); a token that resolves to empty
+  is dropped, and an entry that resolves to all-empty is skipped.
+- Map only **listing-derived text**: address, city, stats, description. Do NOT map
+  creative copy (a brush headline has no listing source — leave it to the default),
+  fixed strings, or agent/branding fields (those come from the branding step below).
+- **Photos are not mapped here.** Listing photos place via image-field
+  `role:"property"` + `classifyHints` (§3). `mapping.json` is text only.
+
+**Token vocabulary** — the listing is a RESO record, so any RESO field present can be
+a `${Token}`. The fields the shipped templates rely on:
+
+| Token | Meaning |
+|-------|---------|
+| `StreetNumber`, `StreetName` | street address parts |
+| `City`, `StateOrProvince`, `PostalCode` | city / state / zip |
+| `BedroomsTotal` | beds |
+| `BathroomsTotalInteger` | baths |
+| `LivingArea` | interior sq ft |
+| `LotSizeSquareFeet` | lot sq ft |
+| `ListPrice` | list price |
+| `PublicRemarks` | the listing's marketing description |
+| `OpenHouse` | open-house line (when present) |
+
+Reference (`legrande/mapping.json`, verbatim from a shipped template):
+
+```json
+{
+  "fields": {
+    "address": "${StreetNumber} ${StreetName}",
+    "city": "${City}, ${StateOrProvince}",
+    "addressBar": "${StreetNumber} ${StreetName} | ${City}",
+    "stats.beds": "${BedroomsTotal}",
+    "stats.baths": "${BathroomsTotalInteger}",
+    "stats.sqft": "${LivingArea}",
+    "description": "${PublicRemarks}"
+  }
+}
+```
+
+### The third integration point: agent branding (you can't fully finish this — report it)
+
+Listing **text** comes from `mapping.json`; listing **photos** from `role:"property"`;
+the **hosting agent's** identity (name / phone / email / DRE / headshot / logo) comes
+from a separate agent-branding step the platform runs on create. Two facts:
+
+1. **Use the shipped key convention** so branding can target the fields: text keys
+   `agent.name`, `agent.phone`, `agent.email`, `agent.dre`, `agent.website`; image
+   keys `photos.headshot` + `photos.agentLogo` (both `brandingAsset:true`,
+   `role:"branding"`). Brokerage-level strings (return address, brokerage DRE, broker
+   logo) stay as fixed `data.json` defaults — they're not per-agent.
+2. **Branding is wired in app code, per template id** (a hardcoded map today; a
+   config-driven version is planned). A brand-new template gets **no** agent branding
+   until a developer adds that one small branch — the skill cannot do it from the
+   template folder alone. So the skill MUST end its report by **listing this
+   template's agent keys** and stating that a developer needs to register them in the
+   app's branding map. Until then, an agent-created design fills listing text + photos
+   but the agent block stays on the `data.json` default.
 
 ---
 
@@ -1022,15 +1125,34 @@ edit-mode/boot JS.
    zones unchanged. Preserve the bleed CSS structure (§6.3).
 5. **Externalize content** into `data.json` (the real values from the PDF, including
    fixed render-only strings) and define the editable subset in `schema.json` with
-   accurate `constraints` (compute image `aspect`/`minPx` per §3).
+   accurate `constraints` (compute image `aspect`/`minPx` per §3). **Tag image fields
+   for the listing flow:** `role:"property"` + `classifyHints` on every photo that
+   should fill from an MLS listing; `brandingAsset:true` + `role:"branding"` on the
+   headshot/logo (§3, §5.5).
 6. **Author `rules.json`** — especially a thorough `pageIntent` list and any
    `subsetFonts` declaration.
-7. **Write `manifest.json`** (§2). Ensure `id` == folder name.
-8. **Self-check** (§9), then produce `thumbnail.jpg`.
+7. **Author `mapping.json`** (§5.5) unless the template is branding-only — map the
+   listing-derived text keys (address, city, stats, description) to `${RESO}` tokens.
+   Skipping this is the #1 reason a finished template "fills nothing from a listing."
+8. **Write `manifest.json`** (§2). Ensure `id` == folder name.
+9. **Self-check** (§9), then produce `thumbnail.jpg`.
 
 ---
 
 ## 9. Self-verification before you call it done
+
+**Two modes (see `preflight` MODE line).** Checks 2–7 below are **structural/content
+checks that need no browser** — always run them. Check 1 (rendering the live HTML) and
+the pixel-accurate screenshot/compare need a headless browser:
+- **full mode:** do everything, including the live render + source-vs-render compare.
+- **no-browser mode** (e.g. a Claude Cowork session — no Chromium): you cannot rasterize
+  the template's HTML. Substitute for check 1 by rendering the **SOURCE** PDF
+  (`render.mjs`/mupdf — browser-free), reading it directly, and cross-checking each
+  element's measured position/font (from `probe.mjs`) against your template's absolute
+  `.sheet` pt coordinates (same coordinate space) and `data.json` content. `selfcheck`
+  catches missing assets on disk and overflow-by-length; `fontcheck` catches blank-glyph
+  risk. Then **flag in your report that a pixel-accurate visual pass in a browser env is
+  still pending** — that residual is what the no-browser path can't fully cover.
 
 Run these and fix anything that fails:
 
@@ -1051,7 +1173,14 @@ Run these and fix anything that fails:
    (calling it twice with the same data yields identical DOM).
 6. **Thumbnail.** Render page 1 (e.g. headless screenshot at the trim size) and save
    it as `thumbnail.jpg`; set `manifest.thumbnail` to that file name.
+7. **Listing autofill is wired (unless branding-only).** `mapping.json` exists; every
+   key in it is a text/richText key present in `schema.json`; every photo meant to
+   fill from a listing carries `role:"property"`. `selfcheck.mjs` enforces all of
+   this — a real-estate template that passes structural sync but has no `mapping.json`
+   or no `role:"property"` photos will "render fine and fill nothing."
 
 Deliver the complete folder. State clearly any place you had to substitute a
-subset font, use a low-resolution default image, or guess a measurement — those are
-the things a human reviewer must confirm before the template ships.
+subset font, use a low-resolution default image, or guess a measurement — and, for a
+listing template, **list the template's agent-branding keys and note that a developer
+must register them in the app branding map (§5.5)** — those are the things a human
+must confirm before the template ships.

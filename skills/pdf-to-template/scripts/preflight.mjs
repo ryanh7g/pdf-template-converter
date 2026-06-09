@@ -29,16 +29,34 @@ if (!existsSync(join(here, 'node_modules'))) {
   } catch (e) { fail('npm install failed — check your internet connection, then re-run preflight.'); }
 } else ok('dependencies present');
 
-// 3. Headless browser (puppeteer bundles its own Chromium)
+// 3. Browser-free verification engines (these do the real work; no browser needed).
+let mupdfOk = false;
+try { await import('mupdf'); mupdfOk = true; ok('mupdf ready (source PDF → PNG, no browser)'); }
+catch { fail('mupdf missing — run npm install in scripts/'); }
+try { await import('sharp'); ok('sharp ready (comparison images, no browser)'); }
+catch { warn('sharp missing — comparison images unavailable (npm install in scripts/)'); }
+
+// 4. Headless browser (puppeteer/Chromium) — OPTIONAL. Enables the pixel-accurate
+//    template screenshot (shoot.mjs) + the bleed export-pdf check. Sandboxed
+//    environments (e.g. a Claude Cowork session) often have no Chromium; that is
+//    NOT a blocker — the skill falls back to the browser-free verification path.
+let browser = false;
 try {
   const pptr = (await import('puppeteer')).default;
-  const path = pptr.executablePath();
-  existsSync(path) ? ok('headless browser ready')
-    : warn('puppeteer installed but Chromium not downloaded — run: npx puppeteer browsers install chrome');
-} catch (e) {
-  warn('puppeteer not usable yet: ' + e.message.split('\n')[0]);
-}
+  if (existsSync(pptr.executablePath())) { browser = true; ok('headless browser ready (full visual mode)'); }
+  else warn('no Chromium — running in NO-BROWSER mode');
+} catch { warn('no usable browser — running in NO-BROWSER mode'); }
 
 console.log('');
 if (hard) { console.log(`${hard} blocking issue(s) — fix the ✗ lines above, then re-run preflight.`); process.exit(1); }
-console.log('Ready. You can convert a PDF now.');
+if (browser) {
+  console.log('MODE: full — pixel-accurate self-shoot + compare + bleed export-pdf available.');
+} else {
+  console.log('MODE: no-browser — shoot.mjs / export-pdf.mjs are UNAVAILABLE (they need Chromium).');
+  console.log('Verify with the browser-free path instead (see SKILL.md "Verification"):');
+  console.log('  • render the SOURCE pdf (render.mjs/mupdf) and inspect it directly;');
+  console.log('  • run selfcheck.mjs (sync + MLS layer + missing-asset + overflow) and fontcheck.mjs (glyph coverage);');
+  console.log('  • cross-check template.html absolute pt coordinates against probe.mjs measurements;');
+  console.log('  • flag that a pixel-accurate visual pass in a browser env is still pending before ship.');
+}
+console.log('\nReady. You can convert a PDF now.');
