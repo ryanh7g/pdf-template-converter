@@ -68,6 +68,25 @@ if (existsSync(`${dir}/mapping.json`)) {
       else if (!textKinds.has(get(schema.fields.find(f => f.key === k), 'type'))) bad(`mapping.json key '${k}' maps a non-text field (only text/richText map; photos use role:"property")`);
     }
     if (imageFields.length > 0 && propertySlots.length === 0) warn('mapping.json present but NO image field has role:"property" — MLS photos will not place');
+
+    // Agent-branding map (contract §5.5): { "<schema.key>": "<token>" }. Tokens
+    // mirror the app's brandingValue() vocabulary in lib/branding.ts.
+    const TEXT_TOKENS = new Set(['name', 'title', 'phone', 'email', 'dre', 'office', 'website']);
+    const IMAGE_TOKENS = new Set(['headshot', 'logo']);
+    const LIST_TOKENS = new Set(['creds', 'contact']); // composite — target must be list
+    const agent = mapping.agent || {};
+    for (const [k, token] of Object.entries(agent)) {
+      const sf = schema.fields.find(f => f.key === k);
+      if (!sf) { bad(`mapping.json agent key '${k}' has no schema field`); continue; }
+      if (!TEXT_TOKENS.has(token) && !IMAGE_TOKENS.has(token) && !LIST_TOKENS.has(token))
+        bad(`mapping.json agent '${k}' → unknown token "${token}" (allowed: ${[...TEXT_TOKENS, ...IMAGE_TOKENS, ...LIST_TOKENS].join(', ')})`);
+      else if (IMAGE_TOKENS.has(token) && !isImageLike(sf))
+        bad(`mapping.json agent '${k}' → image token "${token}" but field is not an image`);
+      else if (LIST_TOKENS.has(token) && sf.type !== 'list')
+        bad(`mapping.json agent '${k}' → composite token "${token}" must target a type:"list" field (got "${sf.type}")`);
+      else if (TEXT_TOKENS.has(token) && !textKinds.has(sf.type))
+        bad(`mapping.json agent '${k}' → text token "${token}" but field is type "${sf.type}" (expected text/richText)`);
+    }
   }
 } else if (propertySlots.length > 0) {
   warn('schema has role:"property" photos but no mapping.json — listing TEXT will not fill (add mapping.json) — OK only if branding-only by design');

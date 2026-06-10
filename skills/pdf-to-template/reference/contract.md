@@ -444,24 +444,68 @@ Reference (`legrande/mapping.json`, verbatim from a shipped template):
 }
 ```
 
-### The third integration point: agent branding (you can't fully finish this — report it)
+### The third integration point: agent branding (config-driven — you CAN finish this)
 
-Listing **text** comes from `mapping.json`; listing **photos** from `role:"property"`;
-the **hosting agent's** identity (name / phone / email / DRE / headshot / logo) comes
-from a separate agent-branding step the platform runs on create. Two facts:
+Listing **text** comes from `mapping.json`'s `fields`; listing **photos** from
+`role:"property"`; the **hosting agent's** identity (name / phone / email / DRE /
+headshot / logo) comes from a separate agent-branding step the platform runs on
+create. That step is now **config-driven**: you emit an `agent` map in
+`mapping.json` and the platform fills the agent block from it — **no app code
+change is needed**. (Older templates were branded by a hardcoded per-template
+branch in app code; that path still exists as a fallback, but new templates
+should use the `agent` map.)
 
-1. **Use the shipped key convention** so branding can target the fields: text keys
-   `agent.name`, `agent.phone`, `agent.email`, `agent.dre`, `agent.website`; image
-   keys `photos.headshot` + `photos.agentLogo` (both `brandingAsset:true`,
-   `role:"branding"`). Brokerage-level strings (return address, brokerage DRE, broker
-   logo) stay as fixed `data.json` defaults — they're not per-agent.
-2. **Branding is wired in app code, per template id** (a hardcoded map today; a
-   config-driven version is planned). A brand-new template gets **no** agent branding
-   until a developer adds that one small branch — the skill cannot do it from the
-   template folder alone. So the skill MUST end its report by **listing this
-   template's agent keys** and stating that a developer needs to register them in the
-   app's branding map. Until then, an agent-created design fills listing text + photos
-   but the agent block stays on the `data.json` default.
+**Emit an `agent` map** alongside `fields` in `mapping.json`. Each entry maps a
+**schema key** → a **branding token**. The platform resolves each token against
+the signed-in agent's directory profile (falsy/absent fields are skipped):
+
+```json
+{
+  "fields": { "...": "..." },
+  "agent": {
+    "agent.name":      "name",
+    "agent.phone":     "phone",
+    "agent.email":     "email",
+    "agent.dre":       "dre",
+    "agent.website":   "website",
+    "photos.headshot": "headshot",
+    "photos.agentLogo": "logo"
+  }
+}
+```
+
+**Branding token vocabulary** (canonical list — mirrors the app's `brandingValue`
+in `lib/branding.ts`; the schema key on the left is whatever YOUR template uses):
+
+| Token | Resolves to | Shape |
+|-------|-------------|-------|
+| `name` | agent full name | text |
+| `title` | agent title, ® stripped (template renders its own ®) | text |
+| `phone` | agent phone | text |
+| `email` | agent SG email | text |
+| `dre` | `DRE #<number>` (prefix added by the app) | text |
+| `office` | brokerage/office name | text |
+| `website` | `www.web.site` placeholder (no directory field yet — set unconditionally) | text |
+| `headshot` | agent headshot image | image `{src}` |
+| `logo` | agent personal logo image | image `{src}` |
+| `creds` | composite `[title, office]` (drops empties) | **list** of text |
+| `contact` | composite `[phone, email]` (drops empties) | **list** of text |
+
+Rules:
+- The **left-hand schema key must exist** in `schema.json` (selfcheck enforces
+  `agent` keys ⊆ schema keys, same as `fields`).
+- The **right-hand token must be in the table above** (selfcheck enforces the
+  vocabulary). Unknown tokens are rejected, not silently dropped.
+- **`creds` / `contact` are list-typed composites** — only map them to a schema
+  field of `type:"list"` (e.g. a `hostedBy.creds` credential line that stacks
+  `title` + `office`). For separate single-line fields, use the atomic tokens
+  (`title`, `office`, `phone`, `email`) instead.
+- Image tokens (`headshot`, `logo`) target the `photos.*` keys you already marked
+  `brandingAsset:true` + `role:"branding"` in the schema.
+- Brokerage-level strings (return address, brokerage DRE, broker logo) stay as
+  fixed `data.json` defaults — they're **not** per-agent, so don't map them.
+- **Branding-only templates** (e.g. a business card) with no listing fields still
+  get an `agent` map — emit `agent` and OMIT `fields` (or `fields: {}`).
 
 ---
 

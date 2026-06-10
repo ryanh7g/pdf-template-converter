@@ -99,12 +99,17 @@ image fields — `role:"property"` + `classifyHints` on listing photos,
 `rules.json` (thorough `pageIntent`, `subsetFonts`, font notes), `manifest.json`
 (`id` MUST equal the folder name; list every font + asset).
 
-**6b. Write `mapping.json`** (contract §5.5) — UNLESS the template is branding-only.
-Map the listing-derived text keys (address, city, stats.*, description) to `${RESO}`
-tokens (`${StreetNumber}`, `${City}`, `${BedroomsTotal}`, `${PublicRemarks}`, …).
-This is what fills a design from an MLS listing; omit it and the template renders
-perfectly but fills NOTHING from a listing. Photos fill via the `role:"property"`
-tags from step 6, not here.
+**6b. Write `mapping.json`** (contract §5.5) — has TWO sections:
+- `fields` (UNLESS branding-only): map the listing-derived text keys (address,
+  city, stats.*, description) to `${RESO}` tokens (`${StreetNumber}`, `${City}`,
+  `${BedroomsTotal}`, `${PublicRemarks}`, …). This is what fills a design from an
+  MLS listing; omit it and the template renders perfectly but fills NOTHING from a
+  listing. Photos fill via the `role:"property"` tags from step 6, not here.
+- `agent` (config-driven branding — **emit this so the agent block fills with no
+  app code change**): map each agent schema key → a branding token from the
+  contract §5.5 vocabulary (e.g. `"agent.name":"name"`, `"agent.dre":"dre"`,
+  `"photos.headshot":"headshot"`, `"photos.agentLogo":"logo"`). The platform
+  resolves the tokens against the signed-in agent's profile on create.
 
 **7. Self-verify.** These run in BOTH modes (no browser needed) and must pass:
 - `node $SCRIPTS/selfcheck.mjs <templateDir>` — four-way sync + constraints + the MLS
@@ -132,9 +137,10 @@ SOURCE render (`work/page-1.png` → `sharp` resize → `thumbnail.jpg`) — the
 reproduces the source, so it's a faithful stand-in. Set `manifest.thumbnail`.
 
 **8. Report** honestly: state any font substitution, low-res default image, or
-guessed measurement. **For a listing template, also list its agent-branding keys
-and note a developer must register them in the app branding map** (contract §5.5) —
-the skill can't wire branding from the folder alone — so the agent block fills.
+guessed measurement. **Confirm the `agent` map you wrote in `mapping.json`** —
+list the schema-key → token pairs so a human can sanity-check the branding wiring
+(no developer registration needed anymore; the map IS the wiring). If you mapped
+a composite `creds`/`contact` token, confirm its target is a `type:"list"` field.
 **If you ran in no-browser mode, say so explicitly:** the template was verified
 structurally + against the source render, but NOT pixel-rendered — a visual pass in
 a browser-capable environment is still recommended before it ships. Those are what a
@@ -155,6 +161,8 @@ human must confirm before shipping.
   ones (business cards) skip it.
 - **Photos need `role:"property"`.** An image field without it never receives an
   MLS/uploaded photo, no matter how good `classifyHints` is.
-- **Agent branding is app-side code, per template.** The skill can't make the agent
-  block fill on its own — it must REPORT the template's agent keys for a dev to
-  register (contract §5.5). Use the standard keys so that's one line.
+- **Agent branding is config-driven via the `agent` map** in `mapping.json`. Emit
+  it (schema key → branding token, contract §5.5) and the agent block fills with
+  NO app code change. Use the standard `agent.*` / `photos.*` keys. (An older
+  hardcoded-per-template path still exists as a fallback, but new templates should
+  rely on the map.)
