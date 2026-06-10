@@ -416,9 +416,17 @@ a `${Token}`. The fields the shipped templates rely on:
 | `BathroomsTotalInteger` | baths |
 | `LivingArea` | interior sq ft |
 | `LotSizeSquareFeet` | lot sq ft |
-| `ListPrice` | list price |
+| `ListPriceUSD` | list price, **pre-formatted** "$940,000" — **prefer this for a displayed price** (already includes the `$`, so don't prefix another) |
+| `ListPrice` | list price as a RAW number (`940000`, no separators) — only if you format it yourself |
 | `PublicRemarks` | the listing's marketing description |
 | `OpenHouse` | open-house line (when present) |
+
+> **Raw vs. derived tokens.** `${Token}` interpolates the listing field **verbatim with
+> no formatting** — RESO numbers come through bare (`ListPrice`→`1020000`,
+> `LivingArea`→`4180`, no commas). The listing is augmented at fetch time with a few
+> **derived, display-ready** helpers; today that's **`${ListPriceUSD}`**. Use the derived
+> token whenever one exists (especially price). For other numbers, decide per design
+> whether bare is acceptable (sqft "4180" usually fine; a headline price is not).
 
 Reference (`legrande/mapping.json`, verbatim from a shipped template):
 

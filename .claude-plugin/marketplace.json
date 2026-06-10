@@ -6,7 +6,7 @@
       "name": "pdf-template-converter",
       "source": "./",
       "description": "Convert print-ready PDFs (flyer, business card, postcard) into self-contained Marketing Builder template folders (incl. mapping.json for MLS autofill + photo role tags), with automated geometry probing, asset extraction, and browser-free or visual self-verification.",
-      "version": "1.1.0"
+      "version": "1.1.1"
     }
   ]
 }
