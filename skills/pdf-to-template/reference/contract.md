@@ -507,6 +507,53 @@ Rules:
 - **Branding-only templates** (e.g. a business card) with no listing fields still
   get an `agent` map — emit `agent` and OMIT `fields` (or `fields: {}`).
 
+### Two-agent templates: the `coAgent` map (secondary agent)
+
+Some templates are a **two-agent variation** — a co-listing flyer with two headshots
+and two contact blocks, say. When an agent starts one, they pick a **co-agent** (from
+the directory, or auto-selected from the listing's co-list agent), and the platform
+fills the SECONDARY agent block exactly the way it fills the primary one.
+
+If your template has a second agent block, emit a **`coAgent` map** alongside `agent`
+in `mapping.json`. It has the **same shape and the same token vocabulary** as `agent`
+(the table above) — but its schema keys point at your SECONDARY agent fields, and each
+token resolves against the **picked co-agent's** directory profile instead of the
+signed-in agent's:
+
+```json
+{
+  "fields": { "...": "..." },
+  "agent": {
+    "agent.primary.name":     "name",
+    "agent.primary.phone":    "phone",
+    "photos.primaryHeadshot": "headshot"
+  },
+  "coAgent": {
+    "agent.secondary.name":     "name",
+    "agent.secondary.phone":    "phone",
+    "agent.secondary.email":    "email",
+    "agent.secondary.dre":      "dre",
+    "photos.secondaryHeadshot": "headshot"
+  }
+}
+```
+
+Same rules as `agent` (selfcheck validates `coAgent` identically): the left-hand key
+must exist in `schema.json`, the right-hand token must be in the branding vocabulary,
+image tokens target `brandingAsset:true` + `role:"branding"` image fields, and
+`creds`/`contact` target `type:"list"` fields.
+
+- **Only emit `coAgent` for a two-agent template variation.** A single-agent template
+  emits `agent` alone.
+- Give the two agents **distinct schema keys** — e.g. `agent.primary.*` /
+  `agent.secondary.*` and `photos.primaryHeadshot` / `photos.secondaryHeadshot` — so
+  the two blocks are separately addressable. **Never reuse the same key for both.**
+- The `coAgent` map is one of two ways this gets configured: an admin can also label
+  the secondary fields in the app's template editor after import. Emitting the map
+  means the two-agent fill works out of the box, with no post-import step.
+- **Team** (3+ agents, a roster from the directory) is a separate, larger case and is
+  **not** expressed via `coAgent` — don't attempt it here.
+
 ---
 
 ## 6. `template.html` — the layout + render contract (MOST IMPORTANT)

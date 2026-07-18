@@ -110,6 +110,11 @@ image fields — `role:"property"` + `classifyHints` on listing photos,
   contract §5.5 vocabulary (e.g. `"agent.name":"name"`, `"agent.dre":"dre"`,
   `"photos.headshot":"headshot"`, `"photos.agentLogo":"logo"`). The platform
   resolves the tokens against the signed-in agent's profile on create.
+- `coAgent` (**two-agent templates only**): if the layout has a SECOND agent block
+  (co-listing flyer, etc.), emit a `coAgent` map with the same token vocabulary but
+  pointing at your SECONDARY agent keys (use distinct keys, e.g. `agent.secondary.*`
+  / `photos.secondaryHeadshot`). It fills from a co-agent the user picks (or the
+  listing's co-list agent). Single-agent templates emit `agent` only. Contract §5.5.
 
 **7. Self-verify.** These run in BOTH modes (no browser needed) and must pass:
 - `node $SCRIPTS/selfcheck.mjs <templateDir>` — four-way sync + constraints + the MLS
