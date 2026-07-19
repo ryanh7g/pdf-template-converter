@@ -1,6 +1,6 @@
 {
   "name": "pdf-template-converter",
-  "version": "1.3.0",
-  "description": "Convert a print-ready PDF (flyer, business card, postcard) into a self-contained Marketing-Builder template folder (incl. mapping.json for MLS autofill + config-driven agent & co-agent branding + photo role tags), with automated geometry probing, asset extraction, and browser-free or visual self-verification.",
+  "version": "1.4.0",
+  "description": "Convert a print-ready PDF into either (1) a self-contained Marketing-Builder PRINT template folder (incl. mapping.json for MLS autofill + config-driven agent & co-agent branding + photo role tags) via pdf-to-template, or (2) a data-driven Marketing-Builder EMAIL kit (kit.json with per-block MJML + inline listing/branding labels) via pdf-to-email — both with automated geometry probing, asset extraction, and browser-free or visual self-verification.",
   "author": { "name": "Seven Gables — Marketing" }
 }

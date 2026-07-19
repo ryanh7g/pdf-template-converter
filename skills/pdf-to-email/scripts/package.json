@@ -1,0 +1,13 @@
+{
+  "name": "pdf-to-email-engine",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Helper scripts for the pdf-to-email skill: email-selfcheck (kit.json structural + MJML compile-safety). Probe/render/crop/sample/fontcheck/preflight are SHARED with the sibling pdf-to-template skill (see SKILL.md \"Shared engine\") and are not duplicated here.",
+  "scripts": {
+    "email-selfcheck": "node email-selfcheck.mjs"
+  },
+  "dependencies": {
+    "mjml": "4.15.3"
+  }
+}
