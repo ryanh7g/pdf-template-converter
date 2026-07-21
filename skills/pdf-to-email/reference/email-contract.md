@@ -39,8 +39,23 @@ default content, and there is no `fonts/` because email never bundles a font
 file (§5).
 
 **Self-containment still applies to images**: every asset a block's default
-`data` references travels inside `assets/` and is referenced by a **relative**
-path (`assets/…`), never a CDN or absolute external URL.
+`data` references travels inside `assets/` and is referenced by the app's
+**absolute template path** — `/templates/<kit-id>/assets/<file>` where
+`<kit-id>` is the FINAL kit id (== the folder name), exactly like the example
+composition below. Never a CDN or external URL, never a bare relative
+`assets/…` path (the editor previews via a srcdoc iframe with no base URL —
+relative refs 404), and **never a working-title id**: a kit drafted as
+`sg-minimal-email` but shipped as `minimal-email-solo` must reference
+`/templates/minimal-email-solo/assets/…` throughout (real incident 2026-07-21
+— every image in the deployed kit 404'd). The self-check now fails on both
+mismatched ids and missing files.
+
+**Click-to-edit markers are NOT the kit's job**: the app's compiler
+(`renderDataDrivenBlock`) wraps every block in its `mb-block-{id}` marker,
+wraps content-context `{{field}}` text in `data-field` spans, and stamps
+`mb-field-{key}` css-classes onto tags whose `src`/`href` interpolates a
+field. Do not hand-author `mb-block`/`mb-field`/`data-field` markers in block
+MJML — they'd duplicate the runtime injection.
 
 ---
 

@@ -226,6 +226,18 @@ pass; call it out explicitly in your report.
 - **kit folder name == `kit.json`'s `id`**, same discipline as
   print's `manifest.id == folder name` (the registry keys off the folder;
   see `lib/registry.ts`'s disk-kit scan).
+- **Asset paths carry the FINAL kit id too** — every image reference in
+  `defaultComposition` data (and anywhere else in kit.json) is
+  `/templates/<kit-id>/assets/<file>` with `<kit-id>` == the folder name.
+  If the kit was drafted under a working title, sweep the paths when it's
+  renamed: a 2026-07-21 batch shipped `/templates/sg-minimal-email/...`
+  inside folders named `minimal-email-*` and every image 404'd in the
+  deployed editor. Never bare relative `assets/…` either (srcdoc preview has
+  no base URL). The self-check (check 10) fails on both.
+- **Don't hand-author click-to-edit markers** (`mb-block`/`mb-field`/
+  `data-field`) in block MJML — the app's `renderDataDrivenBlock` injects
+  all of them at compile time (block wrapper, text-field spans, and
+  `mb-field-{key}` classes on tags whose src/href interpolates a field).
 - **No `mapping.json` here — labels live inline** on `fields[]`
   (`listingField`/`brandingToken`/`role`). LISTING-EMAIL-AUTOFILL-PLAN.md A1
   deliberately rejected a separate email mapping file because it can't

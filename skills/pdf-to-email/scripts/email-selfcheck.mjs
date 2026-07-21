@@ -239,15 +239,32 @@ if (mjml2html) {
   if (fail === 0) ok('compile-safety check (9): all blocks compiled with zero MJML errors');
 }
 
-// ---- assets on disk (best-effort, mirrors print's missing-asset check) -----
-const walkAssets = (v, acc) => {
-  if (typeof v === 'string') { if (v.startsWith('assets/')) acc.add(v); }
-  else if (Array.isArray(v)) v.forEach((x) => walkAssets(x, acc));
-  else if (v && typeof v === 'object') { typeof v.src === 'string' ? walkAssets(v.src, acc) : Object.values(v).forEach((x) => walkAssets(x, acc)); }
-};
-const assetRefs = new Set();
-for (const inst of defaultComposition) walkAssets(inst.data, assetRefs);
-for (const ref of assetRefs) if (!existsSync(`${dir}/${ref}`)) warn(`defaultComposition references "${ref}" (relative form) but it isn't found on disk under ${dir}/ — confirm the deployed path (kits typically use "/templates/<id>/assets/..." absolute paths, which this check can't resolve locally)`);
+// ---- asset path discipline (10) --------------------------------------------
+// Every asset reference ANYWHERE in the kit (defaultComposition data, block
+// mjml, theme) must be the app's absolute form `/templates/<kit-id>/assets/…`
+// with <kit-id> == this folder, and the file must exist on disk. Two failure
+// modes this catches (both shipped 2026-07-21 and broke the deployed kits):
+//   1. a working-title id baked into paths (/templates/sg-minimal-email/…
+//      while the folder shipped as minimal-email-solo) → every image 404s;
+//   2. bare relative `assets/…` refs → 404 in the editor's srcdoc preview.
+{
+  const strings = new Set();
+  const walk = (v) => {
+    if (typeof v === 'string') strings.add(v);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') Object.values(v).forEach(walk);
+  };
+  walk(kit);
+  let assetFail = 0;
+  for (const s of strings) {
+    for (const m of s.matchAll(/\/templates\/([^/\s"']+)\/((?:assets|[^\s"']+)\/[^\s"')]+)/g)) {
+      if (m[1] !== folderName) { bad(`asset path "${m[0]}" uses id "${m[1]}" but the kit folder is "${folderName}" — use /templates/${folderName}/… (no working-title ids)`); assetFail++; continue; }
+      if (!existsSync(`${dir}/${m[2]}`)) { bad(`asset path "${m[0]}" has no file at ${dir}/${m[2]}`); assetFail++; }
+    }
+    if (/^assets\//.test(s)) { bad(`relative asset ref "${s}" — the editor previews via srcdoc (no base URL); use /templates/${folderName}/${s}`); assetFail++; }
+  }
+  if (assetFail === 0) ok('asset path discipline (10): every /templates/<id>/ ref matches the folder id and resolves on disk');
+}
 
 console.log(fail === 0 ? '\nALL CHECKS PASSED' : `\n${fail} CHECK(S) FAILED`);
 process.exit(fail ? 1 : 0);
