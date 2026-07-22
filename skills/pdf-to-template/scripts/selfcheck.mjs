@@ -98,5 +98,21 @@ if (existsSync(`${dir}/mapping.json`)) {
 }
 for (const f of propertySlots) if (!Array.isArray(f.classifyHints) || f.classifyHints.length === 0) warn(`property photo '${f.key}' has no classifyHints (placement works, match quality lower)`);
 
+// ── Editor↔template message-contract handlers (contract §6.4) ──
+// Detection mirrors lib/templateContract.ts's own string-based detect regexes
+// (matching the quoted message-type literal in a comparison is enough — that's
+// how the app itself decides whether a stored template already handles a type
+// vs. needs the serve-time polyfill). WARN, not fail: a template author may
+// have implemented a handler in a form this regex doesn't recognize, and this
+// check can't run a browser to prove behavior either way.
+const CONTRACT_MESSAGE_TYPES = [
+  'render', 'set-edit-mode', 'highlight', 'clear-highlight', 'mark-overflow',
+  'mark-provisional', 'mark-placeholder', 'locate-field', 'flash-field',
+];
+for (const type of CONTRACT_MESSAGE_TYPES) {
+  const detect = new RegExp(`["']${type}["']`);
+  if (!detect.test(html)) warn(`no reference to message type "${type}" found in template.html — confirm the editor↔template contract handler for it is implemented (contract §6.4)`);
+}
+
 console.log(fail === 0 ? 'ALL STRUCTURAL CHECKS PASSED' : `\n${fail} CHECK(S) FAILED`);
 process.exit(fail ? 1 : 0);

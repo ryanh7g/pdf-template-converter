@@ -119,7 +119,10 @@ image fields — `role:"property"` + `classifyHints` on listing photos,
 **7. Self-verify.** These run in BOTH modes (no browser needed) and must pass:
 - `node $SCRIPTS/selfcheck.mjs <templateDir>` — four-way sync + constraints + the MLS
   layer (mapping keys ⊆ schema text keys; valid image `role`s; missing-asset on disk;
-  warns if a listing template has no `mapping.json` or no `role:"property"` photos).
+  warns if a listing template has no `mapping.json` or no `role:"property"` photos);
+  also WARNs (does not fail) if any contract message-type handler looks absent from
+  `template.html` — including `locate-field`/`flash-field`, which are REQUIRED for
+  every new conversion (contract.md §6.4).
 - `node $SCRIPTS/verbatim-diff.mjs <templateDir>` — contract JS zone unchanged.
 - `node $SCRIPTS/fontcheck.mjs <font> "<the actual data.json strings>"` for each bundled
   face — confirms real glyph coverage (this is how you catch blank-glyph risk WITHOUT
@@ -161,6 +164,16 @@ human must confirm before shipping.
   licensed face or declare `fontSubset:true` + `rules.json.subsetFonts`.
 - **`@page` must NOT set `size`** — the exporter passes explicit width/height.
 - **Never edit the verbatim JS** outside `render()`'s body; `verbatim-diff.mjs` enforces this.
+- **`locate-field` / `flash-field` are REQUIRED, not optional, for new conversions**
+  (added 2026-07-22). The editor's scroll-to-field + flash affordance depends on
+  the template replying to `locate-field` with a `field-located` message carrying
+  document-relative `top`/`height`, and on a `.mb-flash` CSS pulse (brand orange
+  `#ff5c33`, ~1.1s, with a `prefers-reduced-motion` fallback) that `flash-field`
+  toggles for ~1100ms. Mirror `public/templates/ravenswood/template.html` in the
+  marketing-builder app exactly — do not improvise a different shape. The app's
+  `lib/templateContract.ts` polyfills these into old DB-stored templates, but that
+  polyfill is a safety net for pre-existing templates, not a reason to skip
+  implementing them natively here.
 - **No `mapping.json` → fills nothing from a listing.** The most common "looks
   perfect but is inert" failure. Real-estate templates need it; only branding-only
   ones (business cards) skip it.

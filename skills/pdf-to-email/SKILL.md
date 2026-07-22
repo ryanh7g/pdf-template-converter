@@ -140,10 +140,13 @@ step 1, pick (in order of preference):
       so don't force a bad fit into the coded 7.
    Set `structure.required` (blocks the email cannot ship without — typically
    `header`, `footer`), `structure.singleton` (blocks that appear at most once
-   — typically `header`, `hero`, `footer`, `agent-signature`), and
-   `structure.defaultComposition` (the ordered instance list with real
-   extracted content in `data`, reproducing the source PDF's content and
-   order).
+   — ONLY genuinely structural blocks: typically `header`, `hero`, `footer`,
+   `agent-signature` — never a content block; see the Gotchas entry below and
+   `email-contract.md` §3), and `structure.defaultComposition` (the ordered
+   instance list with real extracted content in `data`, reproducing the
+   source PDF's content and order). Every content block (gallery, stat bar,
+   copy/text section, CTA-ish block) gets `min: 0`/`1` and `max` of at least
+   `3` — never `max: 1` — so the app's add/duplicate controls stay usable.
 
 **5. Author each block's `mjml` fragment.** One data-driven MJML string per
 `BlockDef` (`reference/email-contract.md` §3 has the full convention + a
@@ -223,6 +226,25 @@ pass; call it out explicitly in your report.
 
 ## Gotchas (hard-won, carried over + email-specific)
 
+- **Only genuinely structural blocks get `max:1` + `structure.singleton`.**
+  The app's email editor derives BOTH the "add block" and "duplicate block"
+  buttons from the same per-type availability check (current instance count vs
+  `max`); a default composition already seeds one instance of every block
+  type, so `max:1` on a block that's also in `structure.singleton` makes that
+  block's add/duplicate controls **permanently** disabled — not just
+  disabled-until-removed, since a singleton can't be removed below 1 either if
+  it's also in `required`. Real incident (2026-07-22): the three shipped
+  `minimal-email-*` kits set `max:1` + `structure.singleton` on EVERY content
+  block (gallery, stat-bar, market-copy), not just the structural ones —
+  both "add block" and "duplicate" were dead in the app's email editor for
+  every content block, because a kit-wide default composition already seeded
+  one of each and there was no room to ever add a second. Rule going forward:
+  only truly structural, appears-once-by-definition blocks (header/
+  hero-with-branding, footer, agent-signature) are `max:1`/singleton. Content
+  blocks — photo galleries, stat bars, copy/text sections, CTA-ish blocks —
+  MUST ship repeatable: `min: 0` or `1`, `max` at least `3`, and absent from
+  `structure.singleton`. See `reference/email-contract.md` §3/§8 and
+  `email-selfcheck.mjs`'s WARN for this.
 - **kit folder name == `kit.json`'s `id`**, same discipline as
   print's `manifest.id == folder name` (the registry keys off the folder;
   see `lib/registry.ts`'s disk-kit scan).

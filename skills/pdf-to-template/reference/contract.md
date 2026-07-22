@@ -634,11 +634,33 @@ which you rewrite to bind your fields. Reproduce verbatim:
 - the entire **edit-mode block**: `mouseover`/`mouseout` hover outlines, the
   click-to-edit handler that posts `element-clicked`, the pointer gesture handlers
   that post `img-grab` / `img-pan` / `img-zoom` / `img-release`, the inbound
-  `message` handler (`render`, `set-edit-mode`, `highlight`, `clear-highlight`),
-  and `setActive` / `nodeForKey` / `fieldKeyOf`;
+  `message` handler (`render`, `set-edit-mode`, `highlight`, `clear-highlight`,
+  `mark-overflow`, `mark-provisional`, `mark-placeholder`, **`locate-field`,
+  `flash-field`** — the last two are REQUIRED for every new conversion, see
+  below), and `setActive` / `nodeForKey` / `fieldKeyOf`;
 - the **boot sequence and its priority order**: render from
   `window.__FLYER_DATA__` if present, else `fetch("./data.json")`, then
   `postMessage({type:"template-ready"})` to the parent.
+
+**REQUIRED — `locate-field` / `flash-field` (added 2026-07-22, "scroll to
+field + flash" round2 W2a #7).** The editor's "fix this" affordance sends
+`{type:'locate-field', fieldKey}` and expects the template to reply with
+`window.parent.postMessage({type:'field-located', fieldKey, top, height}, '*')`
+where `top`/`height` are the `[data-field]` element's **document-relative**
+position (`getBoundingClientRect().top + window.scrollY`, and `.height`) — the
+parent, not this iframe, does the actual scrolling of its own scaled preview
+container. Separately, `{type:'flash-field', fieldKey}` must add class
+`mb-flash` to that same element and remove it again after ~1100ms
+(`setTimeout(() => el.classList.remove('mb-flash'), 1100)`). Add matching CSS:
+a ~1.1s outline+background pulse animation in brand orange `#ff5c33`, with a
+`prefers-reduced-motion` static-outline fallback (and no animation at all
+under `@media print`). Reference implementation to mirror exactly:
+`public/templates/ravenswood/template.html` in the marketing-builder app (its
+message listener's `locate-field`/`flash-field` branches and its `.mb-flash`
+CSS block) — copy its behavior, not just the shape. The app's serve-time
+`lib/templateContract.ts` polyfills these two message types into any
+DB-stored template that predates them, but new template folders authored by
+this skill must implement them natively — do not rely on the polyfill.
 
 `render(d, opts)` must be **pure, idempotent, and side-effect-free** — it is called
 on every keystroke in the editor, inside the QA screenshot pass, and during export.
@@ -764,7 +786,25 @@ edit-mode/boot JS.
   .mb-editable-active{ outline:2px solid #ffb020 !important; outline-offset:1px; }
   /* Over-length field flagged by the editor (too long for its box). */
   .mb-overflow{ outline:2px dashed #e05656 !important; outline-offset:2px; }
-  @media print{ .mb-editable-hover, .mb-editable-active, .mb-overflow{ outline:none !important; } }
+  /* Field still showing the template default (sample) text — a passive
+     hint outline until the agent edits it. Editor preview only; never
+     printed/exported (see the @media print reset below). */
+  .mb-placeholder{ box-shadow:inset 0 0 0 2px #f0a020 !important; background:rgba(240,160,32,.08) !important; }
+  @media print{ .mb-placeholder{ box-shadow:none !important; background:none !important; } }
+  /* Low-res MLS placeholder photo: amber inset frame + corner badge (editor only). */
+  .mb-provisional{ box-shadow:inset 0 0 0 3px #f0a020 !important; }
+  .mb-provisional::after{ content:"⚠ MLS — replace"; position:absolute; left:0; top:0; z-index:6;
+    background:#f0a020; color:#1a1a1a; font:600 9px/1 "Lato",Arial,sans-serif; padding:3px 5px; letter-spacing:.3px; pointer-events:none; }
+  @media print{ .mb-editable-hover, .mb-editable-active, .mb-overflow{ outline:none !important; }
+    .mb-provisional{ box-shadow:none !important; } .mb-provisional::after{ display:none !important; } }
+  /* "Fix" → scroll into view + flash (round2 W2a #7; REQUIRED, see §6.4). */
+  .mb-flash{ animation: mb-flash-pulse 1.1s ease-out; }
+  @keyframes mb-flash-pulse{
+    0%{ outline:3px solid #ff5c33; outline-offset:2px; background-color:rgba(255,92,51,.22); }
+    100%{ outline:3px solid rgba(255,92,51,0); outline-offset:2px; background-color:rgba(255,92,51,0); }
+  }
+  @media (prefers-reduced-motion: reduce){ .mb-flash{ animation:none; outline:3px solid #ff5c33; outline-offset:2px; } }
+  @media print{ .mb-flash{ animation:none; outline:none !important; background:none !important; } }
   #mb-img-hint{
     position:fixed; z-index:99999; pointer-events:none; display:none;
     transform:translateX(-50%);
@@ -1161,6 +1201,37 @@ edit-mode/boot JS.
         const n = nodeForKey(k) || document.querySelector(`[data-field="${k.replace(/\[\d+\]$/, "")}"]`);
         if (n) n.classList.add("mb-overflow");
       });
+    } else if (msg.type === "mark-provisional") {
+      document.querySelectorAll(".mb-provisional").forEach((n) => n.classList.remove("mb-provisional"));
+      (msg.keys || []).forEach((k) => {
+        const n = nodeForKey(k) || document.querySelector(`[data-field="${k.replace(/\[\d+\]$/, "")}"]`);
+        const box = n && n.tagName === "IMG" ? (n.parentElement || n) : n;
+        if (box) box.classList.add("mb-provisional");
+      });
+    } else if (msg.type === "mark-placeholder") {
+      document.querySelectorAll(".mb-placeholder").forEach((n) => n.classList.remove("mb-placeholder"));
+      (msg.keys || []).forEach((k) => {
+        const base = k.replace(/\[\d+\]$/, "");
+        document.querySelectorAll(`[data-field="${base}"]`).forEach((n) => n.classList.add("mb-placeholder"));
+      });
+    } else if (msg.type === "locate-field") {
+      // Reference impl of the generic scroll-to-field bridge (round2 W2a #7):
+      // reply with the element's document-relative position; the parent scrolls
+      // its own scaled preview container (it — not this iframe — is what scrolls).
+      const el = nodeForKey(msg.fieldKey);
+      if (el) {
+        const r = el.getBoundingClientRect();
+        window.parent.postMessage(
+          { type: "field-located", fieldKey: msg.fieldKey, top: r.top + window.scrollY, height: r.height },
+          "*",
+        );
+      }
+    } else if (msg.type === "flash-field") {
+      const el = nodeForKey(msg.fieldKey);
+      if (el) {
+        el.classList.add("mb-flash");
+        setTimeout(() => el.classList.remove("mb-flash"), 1100);
+      }
     }
   });
 

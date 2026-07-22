@@ -156,6 +156,22 @@ const ids = defaultComposition.map((i) => i.id);
 const dupIds = ids.filter((id, i) => ids.indexOf(id) !== i);
 for (const id of new Set(dupIds)) bad(`structure.defaultComposition has duplicate instance id "${id}"`);
 
+// ---- 8b. over-restrictive singleton/max on likely CONTENT blocks -----------
+// Real incident 2026-07-22: the minimal-email-* kits shipped every content
+// block (gallery/stat-bar/copy-ish blocks) at max:1 AND in structure.singleton
+// — since a default composition already seeds one instance of every type,
+// that combination permanently disables both "add block" and "duplicate" in
+// the app's editor (it derives both from the same max-vs-count check). Only
+// genuinely structural blocks (header/hero/footer/agent-signature) should
+// ever carry max:1 + singleton. This is a judgment call (WARN, not FAIL) —
+// call it out per contract.md §3 so a human confirms the classification.
+const singletonSet = new Set(singleton);
+for (const b of blocks) {
+  if (b.max != null && b.max <= 1 && singletonSet.has(b.type)) {
+    warn(`block "${b.type}" is max:1 AND in structure.singleton — confirm this block is truly structural — content blocks must be repeatable (see contract §blocks)`);
+  }
+}
+
 if (fail === 0) ok('structural checks (1-8) passed');
 
 // ---- 9. compile-safety: mjml2html on every block with sample values -------

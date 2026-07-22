@@ -111,6 +111,26 @@ interface BlockDef {
 mechanism — there is no separate `repeatable` flag. A block with neither `min`
 nor `max` set is unbounded (like `listing-card` in the shipped kit, `max: 6`).
 
+**Classification rule — structural vs. content blocks (hard requirement).**
+The app derives BOTH its "add block" and "duplicate block" controls from the
+same availability check (current composition count for that type vs. `max`),
+and every kit's `structure.defaultComposition` already seeds one instance of
+each block type. The consequence: `max: 1` combined with listing the type in
+`structure.singleton` makes that block's add/duplicate controls **permanently
+disabled** — there is never a moment where a second instance is allowed. Only
+set `max: 1` + `structure.singleton` on blocks that are genuinely structural
+and appear-once-by-definition: `header`/`hero-with-branding`, `footer`,
+`agent-signature`. Every CONTENT block — photo galleries, stat bars,
+copy/text sections, CTA-ish blocks, listing cards, anything the agent would
+plausibly want more than one of — MUST be repeatable: `min: 0` or `1`, `max`
+of at least `3`, and must NOT appear in `structure.singleton`. A real incident
+(2026-07-22) shipped all three `minimal-email-*` kits with every content block
+at `max:1` + singleton, permanently disabling add/duplicate for all of them;
+the fix set `gallery`/`stat-bar`/`market-copy` to `max: 4` and removed them
+from `structure.singleton`. `email-selfcheck.mjs` WARNs (does not fail — the
+structural/content call is a judgment call) on any block type that is both
+`max <= 1` and in `structure.singleton`.
+
 ### 3.1 The `mjml` fragment — convention
 
 `mjml` is a **section-level MJML fragment** — one or more `mj-section`
