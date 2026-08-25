@@ -74,7 +74,7 @@ if (existsSync(`${dir}/mapping.json`)) {
     // mirror the app's brandingValue() vocabulary in lib/branding.ts. `agent`
     // fills from the signed-in agent; `coAgent` (two-agent templates) fills the
     // SECONDARY agent block from the picked co-agent — same tokens, same rules.
-    const TEXT_TOKENS = new Set(['name', 'title', 'phone', 'email', 'dre', 'office', 'website']);
+    const TEXT_TOKENS = new Set(['name', 'title', 'phone', 'email', 'dre', 'office', 'officeAddress', 'website']);
     const IMAGE_TOKENS = new Set(['headshot', 'logo']);
     const LIST_TOKENS = new Set(['creds', 'contact']); // composite — target must be list
     const checkBrandingMap = (map, label) => {

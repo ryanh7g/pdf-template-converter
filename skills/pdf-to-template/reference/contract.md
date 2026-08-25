@@ -493,6 +493,7 @@ in `lib/branding.ts`; the schema key on the left is whatever YOUR template uses)
 | `email` | agent SG email | text |
 | `dre` | `DRE #<number>` (prefix added by the app) | text |
 | `office` | brokerage/office name | text |
+| `officeAddress` | the office's street address | text |
 | `website` | `www.web.site` placeholder (no directory field yet — set unconditionally) | text |
 | `headshot` | agent headshot image | image `{src}` |
 | `logo` | agent personal logo image | image `{src}` |
