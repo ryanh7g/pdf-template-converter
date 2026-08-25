@@ -58,6 +58,7 @@ for (const f of schema.fields) {
 const imageFields = schema.fields.filter(isImageLike);
 const propertySlots = imageFields.filter(f => f.role === 'property');
 const textKinds = new Set(['text', 'richText']);
+let brandingMaps = [];
 if (existsSync(`${dir}/mapping.json`)) {
   let mapping; try { mapping = J('mapping.json'); } catch { bad('mapping.json is not valid JSON'); mapping = null; }
   if (mapping) {
@@ -92,11 +93,28 @@ if (existsSync(`${dir}/mapping.json`)) {
     };
     checkBrandingMap(mapping.agent, 'agent');
     checkBrandingMap(mapping.coAgent, 'coAgent');
+    brandingMaps = [mapping.agent, mapping.coAgent];
   }
 } else if (propertySlots.length > 0) {
   warn('schema has role:"property" photos but no mapping.json — listing TEXT will not fill (add mapping.json) — OK only if branding-only by design');
 }
 for (const f of propertySlots) if (!Array.isArray(f.classifyHints) || f.classifyHints.length === 0) warn(`property photo '${f.key}' has no classifyHints (placement works, match quality lower)`);
+
+// ── Cobrand flag (contract §2 + §5.6) ──
+// `manifest.cobrand` says THIS TEMPLATE has a placeholder for the AGENT'S OWN
+// logo (as opposed to the brokerage lockup every design carries). It is emitted
+// ONLY when the converting run asked the cobrand question and got a yes — so a
+// brokerage-only template has no `cobrand` key at all and neither check below
+// can fire on it. There is deliberately NO reverse check ("logo token but no
+// cobrand flag"): templates shipped before this flag existed map a `logo` token
+// with no flag, and failing/warning on them would be noise, not a finding.
+if (manifest.cobrand !== undefined && typeof manifest.cobrand !== 'boolean')
+  bad(`manifest.cobrand must be a boolean (got ${JSON.stringify(manifest.cobrand)})`);
+if (manifest.cobrand === true) {
+  const taggedLogo = brandingMaps.some(m => Object.values(m || {}).includes('logo'));
+  if (!taggedLogo)
+    warn('manifest.cobrand is true but NO field is mapped to the "logo" branding token — the cobranded placeholder is UNTAGGED. This is a legitimate outcome (tag only when confident): finish the tag in the app\'s admin template editor after import.');
+}
 
 // ── Editor↔template message-contract handlers (contract §6.4) ──
 // Detection mirrors lib/templateContract.ts's own string-based detect regexes
