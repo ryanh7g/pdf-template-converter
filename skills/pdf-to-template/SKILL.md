@@ -64,6 +64,36 @@ points for every element.
   from the render with `crop.mjs`, e.g.
   `node $SCRIPTS/crop.mjs work/page-1.png 300 '[["logo",68,63,117,17]]' tmp`.
 
+**3b. Cobranding — ASK, do not guess (JUDGMENT GATE).** With the marks you just
+extracted in front of you, use **AskUserQuestion** — one question, always asked, on
+every conversion:
+
+> **Is this design cobranded?** Does it have a place for the AGENT'S OWN logo (their
+> personal brand mark), as opposed to only the brokerage lockup?
+> — **No — brokerage only** (default) · **Yes — it has a spot for the agent's logo**
+
+**Never infer this from the artwork.** A converter that hunts for "a logo" in every
+PDF tags the BROKERAGE mark, and then every design made from that template silently
+replaces the brokerage lockup with an agent's logo. A missing tag is a visible gap an
+admin fixes in a minute; a wrong tag ships bad brokerage artwork to print.
+
+- **No** → emit nothing cobrand-related: no `cobrand` key, no logo field, no `logo`
+  token. The conversion is exactly what it would have been without this step.
+- **Yes** → `manifest.cobrand: true` (step 6), and look for the candidate block under
+  the confidence rule in contract §5.6. Tag it ONLY if all five hold:
+  1. it is not a `role:"property"` photo; 2. it is not the headshot; 3. it is not the
+  brokerage lockup (its crop *is* that mark) and does not repeat at the same
+  coordinates on 2+ pages; 4. **exactly one** placement survives 1–3; 5. that survivor
+  has a positive signal — a legend near it ("logo", "your logo here", "co-brand"), or
+  it sits inside the agent block (within ~0.5 in of a field mapped to an `agent.*`
+  token) and is not the headshot, or the user's answer named its location.
+  Size in inches is a tiebreaker at most, never a test — 1.5 in is a modest mark on a
+  flyer and half the width of a business card.
+- **Not confident** (0 or 2+ survivors, or no positive signal) → still emit
+  `manifest.cobrand: true`, leave the block UNTAGGED, and say so in your step-8
+  report. That is the designed path (an admin finishes the tag in the app's template
+  editor); do NOT ask a follow-up "which block is it?" to manufacture confidence.
+
 **4. Fonts — JUDGMENT GATE (do not skip).** From the probe inventory:
 - Identify each typeface and whether it is `subset` and/or commercial.
 - Open-licensed fonts (e.g. Lato, OFL): download the FULL weights you use and
@@ -95,9 +125,14 @@ bleed CSS structure and the entire edit-mode/messaging/boot JS.
 **6. Write the JSON.** `data.json` (real extracted content + fixed render-only
 strings), `schema.json` (editable subset; compute image `aspect`/`minPx`; **tag
 image fields — `role:"property"` + `classifyHints` on listing photos,
-`brandingAsset:true`/`role:"branding"` on headshot/logo** — per the contract),
+`brandingAsset:true`/`role:"branding"` on headshot/logo** — per the contract; on a
+COBRANDED design with a confident candidate (step 3b) that includes
+`photos.agentLogo`, `required:false` unless you extracted real default artwork for
+it — a required field with no default fails selfcheck),
 `rules.json` (thorough `pageIntent`, `subsetFonts`, font notes), `manifest.json`
-(`id` MUST equal the folder name; list every font + asset).
+(`id` MUST equal the folder name; list every font + asset; **`"cobrand": true` when
+step 3b was answered yes** — whether or not the block got tagged, and OMITTED
+entirely otherwise; contract §2).
 
 **6b. Write `mapping.json`** (contract §5.5) — has TWO sections:
 - `fields` (UNLESS branding-only): map the listing-derived text keys (address,
@@ -108,7 +143,9 @@ image fields — `role:"property"` + `classifyHints` on listing photos,
 - `agent` (config-driven branding — **emit this so the agent block fills with no
   app code change**): map each agent schema key → a branding token from the
   contract §5.5 vocabulary (e.g. `"agent.name":"name"`, `"agent.dre":"dre"`,
-  `"photos.headshot":"headshot"`, `"photos.agentLogo":"logo"`). The platform
+  `"photos.headshot":"headshot"`). `"photos.agentLogo":"logo"` goes here ONLY on a
+  confident cobrand tag (step 3b / §5.6) — the `logo` token is the AGENT'S own logo,
+  never the brokerage's. The platform
   resolves the tokens against the signed-in agent's profile on create.
 - `coAgent` (**two-agent templates only**): if the layout has a SECOND agent block
   (co-listing flyer, etc.), emit a `coAgent` map with the same token vocabulary but
@@ -145,7 +182,13 @@ SOURCE render (`work/page-1.png` → `sharp` resize → `thumbnail.jpg`) — the
 reproduces the source, so it's a faithful stand-in. Set `manifest.thumbnail`.
 
 **8. Report** honestly: state any font substitution, low-res default image, or
-guessed measurement. **Confirm the `agent` map you wrote in `mapping.json`** —
+guessed measurement. **State the cobrand answer and what you did with it** — one of: "not cobranded, no
+logo placeholder emitted"; "cobranded, `photos.agentLogo` tagged and mapped to the
+`logo` token"; or, when you were not confident, the required sentence: **"This design
+is cobranded (`manifest.cobrand: true`) but I could not confidently identify the
+agent-logo block — <say where you think it is>. Tag it in the admin template editor
+after import (label the image block 'Agent logo (image)')."**
+**Confirm the `agent` map you wrote in `mapping.json`** —
 list the schema-key → token pairs so a human can sanity-check the branding wiring
 (no developer registration needed anymore; the map IS the wiring). If you mapped
 a composite `creds`/`contact` token, confirm its target is a `type:"list"` field.
@@ -179,6 +222,11 @@ human must confirm before shipping.
   ones (business cards) skip it.
 - **Photos need `role:"property"`.** An image field without it never receives an
   MLS/uploaded photo, no matter how good `classifyHints` is.
+- **Cobrand is ASKED, never detected.** The `logo` branding token means the AGENT'S
+  OWN logo. Mapping the brokerage lockup to it replaces the brokerage mark on every
+  design made from the template — worse than leaving it untagged, which is a visible
+  gap an admin closes in the template editor. Ask (step 3b), emit
+  `manifest.cobrand: true` on a yes, and tag only under the §5.6 rule.
 - **Agent branding is config-driven via the `agent` map** in `mapping.json`. Emit
   it (schema key → branding token, contract §5.5) and the agent block fills with
   NO app code change. Use the standard `agent.*` / `photos.*` keys. (An older

@@ -385,10 +385,17 @@ authored `mjml` fragment plus the listing/branding labels, so it is what
       "min": 1,
       "max": 1,
       "fields": [
-        { "key": "logo", "type": "image", "label": "Logo",
-          "description": "Brokerage logo, centered in the header band.",
-          "required": false, "brandingAsset": true, "role": "branding",
-          "brandingToken": "logo", "brandingAgent": "primary" },
+        { "key": "logo", "type": "image", "label": "Brokerage logo",
+          "description": "Brokerage logo, centered in the header band. NOT branding-tagged: the brokerage lockup is part of the DESIGN and is the same for every agent. Tagging it `logo` would replace it with the AGENT'S OWN logo for every recipient — see the warning below.",
+          "required": false },
+
+> **`brandingToken: "logo"` means the AGENT'S OWN logo, never the brokerage one.**
+> That token resolves through the app's `agentLogo()` to whatever the agent chose
+> in Settings → My Branding — one of their four Compendium III lockups or a logo
+> they uploaded. Tag a brokerage mark with it and every agent's personal logo
+> replaces the brokerage lockup on every send. A brokerage mark is part of the
+> design: leave it untagged. Only tag a slot the design set aside FOR the agent's
+> own brand, on a cobranded piece.
         { "key": "tagline", "type": "text", "label": "Tagline",
           "description": "Small line under the logo.",
           "required": false, "constraints": { "maxChars": 60, "maxLines": 1 } }
