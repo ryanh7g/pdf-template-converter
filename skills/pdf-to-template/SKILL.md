@@ -140,6 +140,23 @@ bleed CSS structure and the entire edit-mode/messaging/boot JS.
 - Every editable node needs `id="f-…"`, `data-field="<key>"` (and `data-index`
   for list images), plus a matching `render()` binding.
 
+**5b. Autofit — emit the shrink-to-fit engine (contract §6.4b).** A real address
+is `31680 RANCHO VIEJO ROAD`, not the comp's 7 characters, and nothing in a
+fixed layout reflows. Put the engine INSIDE the body of `render()` — that is the
+only authorable JS zone, and `verbatim-diff.mjs` fails the template if you move
+it. Two rules you own, because the engine cannot check them itself:
+
+- **Every fit target needs an EXPLICIT `width`.** An auto-width `.abs` element
+  shrink-wraps its content, so `scrollWidth === clientWidth` and the engine
+  silently does nothing.
+- **That width is the DISTANCE TO THE NEXT ELEMENT on the row, not the panel
+  width.** Sizing off the panel put a 200pt agent name under a headshot starting
+  at 275.4pt in a 170pt gap; the name rendered as `ALEXANDRA MONTGOM▌`. Five
+  instances were found across 24 postcards.
+
+Keep letter-spacing in `em`, never `pt` — tracking is most of these lines' width
+and only `em` shrinks with the type. Do not fit multi-line body copy.
+
 **6. Write the JSON.** `data.json` (real extracted content + fixed render-only
 strings), `schema.json` (editable subset; compute image `aspect`/`minPx`; **tag
 image fields — `role:"property"` + `classifyHints` on listing photos,

@@ -855,6 +855,165 @@ map your `data.json` structure onto your `id="f-…"` nodes (mirror the referenc
 `text()` for plain strings, `html()` + `esc()` for single rich strings, `lines()`
 for `list` text arrays (joins with `<br>`), and `applyImg()` for every image.
 
+### 6.4b Autofit — shrink-to-fit for tracked display type
+
+Every template here is a fixed-layout, absolutely-positioned reproduction:
+hard-coded `left`/`top`/`width` in points, no flow to push against. The CONTENT
+is variable. `ADDRESS` in a comp is 7 characters; a real one is
+`31680 RANCHO VIEJO ROAD`. `MICHAEL HICKMAN` is 15 characters;
+`ALEXANDRA MONTGOMERY-WHITFIELD` is 30.
+
+Without intervention the long value overflows its box — over a photo, or past
+the trim — or wraps to a line the layout has no room for. Autofit shrinks the
+type until it fits and FLAGS the case where even the floor is not enough.
+
+**It is a runtime safety net, not a substitute for validation.** `schema.json`
+still carries `maxChars`/`maxLines` so the editor warns at authoring time. If
+you widen a box, revisit `maxChars`.
+
+#### Where it goes, and why it cannot go anywhere else
+
+`verbatim-diff.mjs` requires everything in `<script>` to match the skeleton
+byte-for-byte EXCEPT the body of `render(data)`. So the engine is defined
+**inside `render()`**, after the field bindings. Do not move it to its own
+`<script>`, do not attach it to the boot sequence, do not put it in an external
+file — all three fail the diff. CSS for fitted elements goes in the per-template
+`<style>` block, which is not verbatim-checked.
+
+#### The engine
+
+```js
+var FIT_FLOOR   = 0.80;                    // never shrink below 80% of design size
+var FIT_TARGETS = ".fr-address, .fr-city, .chip, .price-bar, .ag-name, .ag-phone, .ag-line, .ag-dre";
+
+function __fitText(el) {
+  if (!el) return;
+  if (!el.getAttribute("data-fit-base")) {                       // cache design size ONCE
+    el.setAttribute("data-fit-base", parseFloat(getComputedStyle(el).fontSize));
+  }
+  var base = parseFloat(el.getAttribute("data-fit-base"));
+  if (!base) return;
+  el.style.whiteSpace = "nowrap";                                // single-line by contract
+  el.style.fontSize   = base + "px";                             // always start from design size
+  var avail = el.clientWidth;
+  if (!avail) return;                                            // not laid out yet — bail
+  var size = base, floor = base * FIT_FLOOR, step = base * 0.005, guard = 0;
+  while (el.scrollWidth > avail && size > floor && guard++ < 200) {
+    size -= step;
+    el.style.fontSize = size + "px";
+  }
+  var fits = el.scrollWidth <= avail;
+  el.setAttribute("data-fit-scale",    (size / base).toFixed(3));
+  el.setAttribute("data-fit-overflow", fits ? "false" : "true");
+}
+
+function __fitAll() {
+  var nodes = document.querySelectorAll(FIT_TARGETS);
+  for (var i = 0; i < nodes.length; i++) __fitText(nodes[i]);
+}
+
+__fitAll();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(__fitAll);
+```
+
+#### Five decisions you must not undo
+
+1. **Letter-spacing in `em`, NEVER `pt`.** The single most important detail.
+   These designs use extreme tracking — 0.359em on the AVANT address, 0.533em on
+   its city line. Tracking is MOST of the line's width, not a rounding detail.
+   In `em` it shrinks with the font size and the line stays optically correct;
+   in points the glyphs would shrink while the gaps stayed fixed, recovering
+   almost no width.
+2. **`text-indent` = `letter-spacing` on centred text.** CSS adds the trailing
+   letter-space after the final glyph, pushing centred text left by half a
+   space. Setting `text-indent` to the same em value cancels it. Right-aligned
+   tracked blocks get a NEGATIVE `margin-right` for the same reason at the other
+   edge.
+3. **Idempotency via `data-fit-base`.** The design size is cached on first run
+   and every run restarts from it. Without this a re-render shrinks an
+   already-shrunk element again, compounding — and the editor's live preview
+   calls `render()` many times.
+4. **Two passes: immediate, then `document.fonts.ready`.** The first measures
+   with whatever face is resolved. If webfonts have not loaded that is a
+   fallback with different metrics and the answer is wrong. Do not remove the
+   second.
+5. **The floor hands back; it does not clamp.** At 80% the loop stops and sets
+   `data-fit-overflow="true"`. NOTHING IS TRUNCATED. Below ~80% the piece stops
+   resembling the approved comp, so a human should shorten the copy. Record it
+   in `rules.json` as a `fit-floor` constraint with `owner: "user"`.
+
+**Deliberately NOT fitted:** `description`/`blurb` body copy. Multi-line
+justified text looks worse shrunk; validate its length with `maxChars` instead.
+
+#### Four traps, each a real defect already found
+
+**(a) An auto-width absolutely-positioned element is INVISIBLE to the check.**
+An `.abs` with no explicit `width` shrink-wraps its content, so
+`scrollWidth === clientWidth` always and the engine silently does nothing. Hit
+on the Mod `.price`. **Give every fit target an explicit `width`.**
+
+**(b) The width must be the AVAILABLE GAP, not the panel width.** The worst bug
+found. On AVANT PC-8 the agent block got `width: 200pt` at `left: 105.6pt`,
+sized off the panel — but the co-agent headshot starts at `275.4pt`, so the real
+gap is ~170pt. The engine fitted the name to 200pt and the headshot, later in
+DOM order, painted over the last 30pt. The name read `ALEXANDRA MONTGOM▌`.
+
+The engine CANNOT detect this — it only knows its own box. **You set these
+widths, so this is yours to get right: measure the distance to the next element
+on that row.** An audit found five instances across 24 postcards.
+
+**(c) Flex containers are the least predictable case.** `.chip`, `.price-bar`
+and the Mod stat boxes are `display:flex` with centred content, where
+`scrollWidth` overflow detection is less reliable. Verified on AVANT PC only.
+First suspect when a chip or bar misbehaves.
+
+**(d) A post-build patch gets silently wiped.** The engine was once applied by a
+post-processing script that patched generated files; re-running a family's
+builder regenerated them WITHOUT it, and it vanished from two templates
+unnoticed. **Emit the engine from the builder itself.**
+
+**(e) Fonts and assets must actually resolve.** Open `preview.html` from an
+unpacked folder, never inside a zip viewer — relative `fonts/` and `assets/`
+paths fail there, the engine measures fallback metrics and shrinks wrongly.
+
+#### Checking it
+
+After a render, every fitted node carries `data-fit-scale` (`1.000` = untouched)
+and `data-fit-overflow`. A console audit:
+
+```js
+[...document.querySelectorAll('[data-fit-scale]')]
+  .filter(n => n.dataset.fitOverflow === 'true' || +n.dataset.fitScale < 0.9)
+  .map(n => [n.id, n.dataset.fitScale, n.dataset.fitOverflow]);
+```
+
+**Honest status of the shipped library:** the engine has been observed executing
+on ONE template (AVANT PC-8: an address needing 427.6pt rendered at 356.9pt in a
+377pt band — 0.835 scale, above the floor). Every other template's behaviour is
+INFERRED. Traps (a) and (b) are both mechanically detectable and a build-time
+audit for them is the outstanding improvement.
+
+#### The other engine — `__flowBody`, Sectional flyers only
+
+`sectional-2-flyer-4/5/6` carry a second, unrelated mechanism: one `description`
+string flowed across three columns of different widths and depths, each paired
+with and vertically centred against a photo. Distribution is BALANCED, not
+greedy — it binary-searches the shallowest common depth at which all the copy
+fits, so no column is left empty. Breaks land on word boundaries; copy too long
+for all three sets `.mb-overflow` and a non-zero `window.__flowLeftover`, and is
+never truncated.
+
+That code was inherited verbatim from a client-supplied template. **Preserve it
+as-is.** Those templates also use an OLDER autofit (`[data-fit]` attributes,
+reducing letter-spacing toward 0 BEFORE touching font-size, measuring with
+`Range` + `getClientRects`). That approach is arguably better — it loses the
+airiness before it loses the type size, and `getClientRects` handles flex
+containers more predictably than `scrollWidth`, which would likely fix trap (c).
+Two implementations coexist. **Do not "unify" them without testing both
+families.**
+
+---
+
 ### 6.5 Full reference `template.html`
 
 Use this verbatim as your skeleton. **Customize** only: (1) the `@font-face` + CSS
