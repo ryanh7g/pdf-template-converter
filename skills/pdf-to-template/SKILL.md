@@ -60,9 +60,13 @@ points for every element.
 
 **3. Extract assets** into the template's `assets/`:
 - Raster photos: copy the embedded images (or re-crop from the render).
-- Vector marks (logos, icons, QR, stat icons are NOT raster XObjects): crop them
+- Vector marks (logos, icons, stat icons are NOT raster XObjects): crop them
   from the render with `crop.mjs`, e.g.
   `node $SCRIPTS/crop.mjs work/page-1.png 300 '[["logo",68,63,117,17]]' tmp`.
+- **NEVER crop a QR code.** A QR is a picture of a URL, and the one in the source
+  encodes the ORIGINAL designer's link. Cropping it prints that same code on
+  every agent's flyer, forever, on paper nobody can correct. Measure its box and
+  emit a `type: "qr"` field instead — **contract §5.7**.
 
 **3b. Cobranding — ASK, do not guess (JUDGMENT GATE).** With the marks you just
 extracted in front of you, use **AskUserQuestion** — one question, always asked, on
@@ -72,6 +76,20 @@ every conversion:
 > personal brand mark), as opposed to only the brokerage lockup?
 > — **No — brokerage only** (default) · **Yes — it has a spot for the agent's logo**
 
+
+**3c. A QR code — ASK ONLY IF IT IS TOO SMALL (JUDGMENT GATE).** If the design
+has a QR, measure its box and emit a `type: "qr"` field at that size in inches
+(contract §5.7). Two rules:
+
+- **Never decode the source QR to pick a default destination.** That url belongs
+  to the original design's owner. Omit `qrDestination` and the agent chooses.
+- **If the source QR measures under 64.8pt (0.9in)** — common on postcards — ask,
+  rather than emitting a value the app will reject with no explanation:
+
+> **This design's QR is 0.62in. The app's minimum is 0.9in, below which a printed
+> code is unreliable to scan.**
+> — **Enlarge it to 0.9in** (recommended; the layout shifts slightly) ·
+> **Keep the source size** (the template is rejected until someone changes it)
 **Never infer this from the artwork.** A converter that hunts for "a logo" in every
 PDF tags the BROKERAGE mark, and then every design made from that template silently
 replaces the brokerage lockup with an agent's logo. A missing tag is a visible gap an

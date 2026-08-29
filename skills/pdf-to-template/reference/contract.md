@@ -160,7 +160,7 @@ Exact shape:
 {
   fields: Array<{
     key: string;          // dot-path into data.json, e.g. "stats.sqft", "photos.hero"
-    type: "text" | "richText" | "image" | "enum" | "list";
+    type: "text" | "richText" | "image" | "enum" | "list" | "qr";
     itemType?: "text" | "richText" | "image" | "enum" | "list";  // for list items
     label: string;        // short human label shown in the editor
     description: string;   // tells the AI the field's INTENT — write these well
@@ -177,6 +177,8 @@ Exact shape:
       fullBleed?: boolean; // image: source must cover trim + bleed
       values?: string[];   // enum: allowed values
     };
+    qrSizeIn?: number;      // qr ONLY, REQUIRED: printed edge length in INCHES (min 0.9)
+    qrDestination?: string; // qr only, OPTIONAL default. NEVER decode it from the source PDF.
   }>;
 }
 ```
@@ -203,6 +205,8 @@ Field-type guide:
 - `list` — an ordered set. With `itemType:"text"` it's repeated lines (e.g. contact
   lines). With `itemType:"image"` it's a fixed row of photos (e.g. exactly 3).
 - `enum` — one value from `constraints.values`.
+- `qr` — a QR code the APP generates. **See §5.7 — do not crop the source PDF's QR
+  into `assets/`.**
 
 **Deriving image constraints from the layout** (do this per image box):
 
@@ -639,6 +643,103 @@ point the human at the admin editor. That is the designed path, not a failure.
 **The `logo` token is the AGENT's logo, never the brokerage's.** If a template's only
 mark is the brokerage lockup, it stays a fixed `data.json` default (e.g. a
 `brokerLogo` field) and is never mapped to `logo`.
+
+## 5.7 QR codes — NEVER bake the source PDF's code into the template
+
+**If the source design has a QR code, do NOT crop it into `assets/`.**
+
+This is a correctness rule, not a preference. A QR is a picture of a URL. The
+one in the source PDF encodes *the original designer's* link — a specific
+agent's property page, a campaign that ended, a listing that sold. Cropping it
+produces a template that prints that same code on every agent's flyer, forever.
+It is wrong on paper, where nothing can correct it: a postcard in a mailbox
+cannot be re-issued.
+
+Every other vector mark (brokerage lockup, stat icons, an Equal Housing badge)
+IS cropped, because it means the same thing on every copy. A QR does not.
+
+### What to emit instead
+
+**A `qr` schema field**, which the app fills at design time by registering a
+short link and rendering the code:
+
+```json
+{
+  "key": "qr.listing",
+  "type": "qr",
+  "label": "QR code",
+  "description": "Scans through to the property page. The agent chooses which page.",
+  "required": true,
+  "qrSizeIn": 1.0
+}
+```
+
+**And an ordinary image element** in `template.html`, positioned where the
+source QR sat:
+
+```html
+<div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" alt="QR code"></div>
+```
+
+The app writes a `data:image/svg+xml` URI into it, so `render()`'s existing
+`img(id, value)` helper works with no change. **Do not type the field as
+`image`** — that routes it through the JPEG print conversion and turns a crisp
+vector into a bitmap, besides handing it to the photo-upload and MLS
+photo-matching paths, which a QR has no business being in.
+
+### `qrSizeIn` — measured, and floored at 0.9in
+
+`qrSizeIn` is the printed edge length in INCHES. Measure the source QR's box in
+points and divide by 72. A schema cannot measure CSS, so this declaration is
+what the app checks scannability against.
+
+**The minimum is 0.9in (64.8pt).** A real code is 25 modules plus a 4-module
+quiet zone, which needs 0.83in to read reliably off paper at arm's length.
+
+Designers put 0.5in codes on postcards routinely, so **if the source QR measures
+under 64.8pt, ASK — do not silently emit an under-minimum value**, which
+produces a template that fails the app's own gate with no explanation:
+
+> **This design's QR is 0.62in. The app's minimum is 0.9in, below which a
+> printed code is unreliable to scan.**
+> — **Enlarge it to 0.9in** (recommended; the layout shifts slightly) ·
+> **Keep the source size** (the template will be rejected until someone changes it)
+
+### `qrDestination` — leave it out, and NEVER decode the source
+
+`qrDestination` is an optional default. **Do not read the source PDF's QR to
+find one.** That URL belongs to the original design's owner; using it as a
+default silently proposes one agent's link to every other agent.
+
+Omit the field and the agent chooses when they open the design. Offer a default
+only if the human converting the template tells you which one — the same
+judgment gate as cobranding in §5.6: ask, never infer.
+
+### The placeholder
+
+Until the agent picks a destination the `<img>` has no `src`, so the slot must
+say what it is rather than showing a blank white square nobody has a reason to
+click:
+
+```css
+.qr-slot { position: relative; width: 1in; height: 1in; padding: .06in; background: #fff; }
+.qr-slot img { width: 100%; height: 100%; display: block; }
+.qr-slot::after {
+  content: "QR code — click to choose";
+  position: absolute; inset: .06in;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 7pt; line-height: 1.25; color: #8a8a8a;
+  border: 1px dashed #c4c4c4; border-radius: 2px;
+}
+.qr-slot:has(img[src])::after { content: none; border: 0; }
+```
+
+The quiet zone is INSIDE the generated SVG, so the padding above is extra
+breathing room rather than the margin itself. Keep artwork clear of the slot —
+a code with something touching its edge is the classic reason a phone will not
+read it.
+
+---
 
 ## 6. `template.html` — the layout + render contract (MOST IMPORTANT)
 

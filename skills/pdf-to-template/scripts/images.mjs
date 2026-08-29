@@ -4,8 +4,10 @@
 // UNROTATED PDF space (media box, bottom-left origin) reported as CSS-top via
 // top = pageHeight - yBottom - height. For ROTATED pages, treat this as
 // best-effort and confirm the box visually against render.mjs output — rotation
-// remaps axes. Vector marks (logos, icons, QR) are NOT XObjects; crop those
-// from the render with crop.mjs.
+// remaps axes. Vector marks (logos, icons) are NOT XObjects; crop those from the
+// render with crop.mjs. A QR CODE IS THE EXCEPTION: never crop one — it encodes
+// the original designer's url and would print on every agent's flyer. Emit a
+// `type:"qr"` field instead (contract §5.7).
 import { readFileSync } from 'fs';
 const _drop = /Cannot polyfill|^Warning:/;
 const _log = console.log, _warn = console.warn;
