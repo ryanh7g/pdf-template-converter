@@ -945,14 +945,18 @@ if (document.fonts && document.fonts.ready) document.fonts.ready.then(__fitAll);
 **Deliberately NOT fitted:** `description`/`blurb` body copy. Multi-line
 justified text looks worse shrunk; validate its length with `maxChars` instead.
 
-#### Four traps, each a real defect already found
+#### Six traps, each a real defect already found
 
 **(a) An auto-width absolutely-positioned element is INVISIBLE to the check.**
 An `.abs` with no explicit `width` shrink-wraps its content, so
 `scrollWidth === clientWidth` always and the engine silently does nothing. Hit
 on the Mod `.price`. **Give every fit target an explicit `width`.**
 
-**(b) The width must be the AVAILABLE GAP, not the panel width.** The worst bug
+**(b) The box must not run past the TRIM.** The engine fits the text to whatever
+box it is given, so an overhang is correct on screen and removed at the
+guillotine. `fitcheck` checks this against `--trim-w`.
+
+**(c) The width must be the AVAILABLE GAP, not the panel width.** The worst bug
 found. On AVANT PC-8 the agent block got `width: 200pt` at `left: 105.6pt`,
 sized off the panel — but the co-agent headshot starts at `275.4pt`, so the real
 gap is ~170pt. The engine fitted the name to 200pt and the headshot, later in
@@ -962,17 +966,17 @@ The engine CANNOT detect this — it only knows its own box. **You set these
 widths, so this is yours to get right: measure the distance to the next element
 on that row.** An audit found five instances across 24 postcards.
 
-**(c) Flex containers are the least predictable case.** `.chip`, `.price-bar`
+**(d) Flex containers are the least predictable case.** `.chip`, `.price-bar`
 and the Mod stat boxes are `display:flex` with centred content, where
 `scrollWidth` overflow detection is less reliable. Verified on AVANT PC only.
 First suspect when a chip or bar misbehaves.
 
-**(d) A post-build patch gets silently wiped.** The engine was once applied by a
+**(e) A post-build patch gets silently wiped.** The engine was once applied by a
 post-processing script that patched generated files; re-running a family's
 builder regenerated them WITHOUT it, and it vanished from two templates
 unnoticed. **Emit the engine from the builder itself.**
 
-**(e) Fonts and assets must actually resolve.** Open `preview.html` from an
+**(f) Fonts and assets must actually resolve.** Open `preview.html` from an
 unpacked folder, never inside a zip viewer — relative `fonts/` and `assets/`
 paths fail there, the engine measures fallback metrics and shrinks wrongly.
 
@@ -987,11 +991,21 @@ and `data-fit-overflow`. A console audit:
   .map(n => [n.id, n.dataset.fitScale, n.dataset.fitOverflow]);
 ```
 
-**Honest status of the shipped library:** the engine has been observed executing
-on ONE template (AVANT PC-8: an address needing 427.6pt rendered at 356.9pt in a
-377pt band — 0.835 scale, above the floor). Every other template's behaviour is
-INFERRED. Traps (a) and (b) are both mechanically detectable and a build-time
-audit for them is the outstanding improvement.
+**`fitcheck.mjs` audits traps (a) and (b) mechanically**, plus a third: a fit
+target whose box runs past the TRIM, where the engine fits the text correctly
+and the guillotine removes the overhang. Run it in step 7 — it needs no browser,
+because those widths are declared in the CSS.
+
+Run across the 45 shipped templates that carry the engine, it found **84
+instances of trap (a) in 33 of them** — `.ag-name` 21 times, `.headline` 9 —
+each one a fit target that shrink-wraps, so autofit silently does nothing for it.
+No trap (b) or (c) survives in the library, which matches the PC-8 collision
+having been fixed across all 24 postcards.
+
+**Honest status:** the engine has been observed EXECUTING on one template (AVANT
+PC-8: an address needing 427.6pt rendered at 356.9pt in a 377pt band — 0.835
+scale, above the floor). Every other template's runtime behaviour is inferred;
+`fitcheck` audits the static widths, not the shrinking itself.
 
 #### The other engine — `__flowBody`, Sectional flyers only
 
@@ -1008,7 +1022,7 @@ as-is.** Those templates also use an OLDER autofit (`[data-fit]` attributes,
 reducing letter-spacing toward 0 BEFORE touching font-size, measuring with
 `Range` + `getClientRects`). That approach is arguably better — it loses the
 airiness before it loses the type size, and `getClientRects` handles flex
-containers more predictably than `scrollWidth`, which would likely fix trap (c).
+containers more predictably than `scrollWidth`, which would likely fix trap (d).
 Two implementations coexist. **Do not "unify" them without testing both
 families.**
 

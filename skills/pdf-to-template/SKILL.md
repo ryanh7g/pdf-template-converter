@@ -196,6 +196,11 @@ entirely otherwise; contract §2).
   `template.html` — including `locate-field`/`flash-field`, which are REQUIRED for
   every new conversion (contract.md §6.4).
 - `node $SCRIPTS/verbatim-diff.mjs <templateDir>` — contract JS zone unchanged.
+- `node $SCRIPTS/fitcheck.mjs <templateDir>` — the three autofit width traps the
+  ENGINE CANNOT SEE (contract §6.4b): a fit target with no explicit width (it
+  shrink-wraps, so autofit does nothing at all), one that runs past the trim, and
+  one that runs under a neighbour on the same page. All three are properties of
+  widths YOU set. Skips cleanly when a template has no autofit.
 - `node $SCRIPTS/fontcheck.mjs <font> "<the actual data.json strings>"` for each bundled
   face — confirms real glyph coverage (this is how you catch blank-glyph risk WITHOUT
   rendering, which matters most in no-browser mode).
