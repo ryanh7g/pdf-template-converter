@@ -1026,11 +1026,20 @@ DESIGN, not a defect — AVANT's stat chips deliberately sit over the photos and
 And the floor is read from the template, because the postcards run a newer
 engine reaching 0.73 rather than the 0.80 documented here.
 
-**What the stress pass found across the 45 templates carrying the engine: 51
-lines that hit the floor at their own declared `maxChars`, in 31 templates.**
-Every AVANT family, plus Minimal and Mod. Those are real: the template cannot
-render the longest value its own schema permits. Fixing each is a judgment call
-between widening the box and lowering `maxChars`.
+**Across the 45 templates carrying the engine, 51 lines hit the floor at their
+own declared `maxChars`, in 31 templates** — every AVANT family, plus Minimal
+and Mod.
+
+**That is the system WORKING, not a defect list. Do not widen those boxes and do
+not lower those `maxChars`** (owner, 2026-08-30). The floor is a hand-back by
+design: nothing is truncated, `data-fit-overflow` is raised, QA reports it and
+the agent shortens the copy — which is why `rules.json` records `fit-floor` with
+`owner: "user"`. `maxChars` is the outer bound of what is *legal*, not a promise
+that every legal value looks good at design size.
+
+Read the number as coverage instead: it says the engine is reachable and
+correctly signalling on 31 templates. What WOULD be a defect is a line that
+overflows without raising the flag.
 
 **Honest status, updated:** the handoff recorded the engine as observed on ONE
 template. `fitprobe` has now run it on all 45 that carry it, under both the
