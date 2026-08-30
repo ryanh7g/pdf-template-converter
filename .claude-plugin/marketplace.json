@@ -8,7 +8,7 @@
       "name": "pdf-template-converter",
       "source": "./",
       "description": "Convert print-ready PDFs into self-contained Marketing Builder PRINT template folders (pdf-to-template: mapping.json MLS autofill + config-driven agent/co-agent branding + photo role tags) or data-driven EMAIL kits (pdf-to-email: kit.json with per-block MJML + inline listing/branding labels), with automated geometry probing, asset extraction, and browser-free or visual self-verification Emits QR placeholder slots the app fills (never the source PDF's own code), and audits the shrink-to-fit engine with fitcheck (static widths) + fitprobe (renders and stress-tests each field at its declared maxChars).",
-      "version": "1.7.0"
+      "version": "1.7.1"
     }
   ]
 }

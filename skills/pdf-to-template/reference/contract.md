@@ -678,19 +678,52 @@ short link and rendering the code:
 source QR sat:
 
 ```html
-<div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" alt="QR code"></div>
+<div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" data-qr alt="QR code"></div>
 ```
 
-The app writes a `data:image/svg+xml` URI into it, so `render()`'s existing
-`img(id, value)` helper works with no change. **Do not type the field as
+**`data-qr` is load-bearing, not decoration.** The editor's contract treats
+every `img[data-field]` as a PHOTO — drag to reposition, alt+scroll to zoom, and
+a click that is deliberately swallowed so the photo tray can open instead
+(`if (el.tagName === "IMG") return;`). A QR slot is an `<img>`, so without the
+marker clicking it opens the photo panel and the QR panel is unreachable.
+
+Exclude `[data-qr]` from every photo handler and let it through the click
+handler:
+
+```js
+if (el.tagName === "IMG" && !el.hasAttribute("data-qr")) return;   // click
+const img = e.target.closest('img[data-field]:not([data-qr])');    // drag / zoom
+```
+
+```css
+.mb-editmode img[data-field]:not([data-qr]) { cursor: grab; }
+.mb-editmode img[data-qr]                   { cursor: pointer; }
+```
+
+Bind it with the template's existing image helper, passing the WHOLE value:
+
+```js
+applyImg("f-qr", d.qr?.listing);   // NOT d.qr?.listing.svg
+```
+
+The app stores `{ destination, shortCode, shortUrl, src }`, and `src` is the
+`data:image/svg+xml` URI — the same key `applyImg` already reads off an image
+value, which is what makes "the existing helper works unchanged" true. Do not
+unwrap it and do not invent a key: a helper that finds no `src` sets an empty
+one, and the slot renders NOTHING, silently, on paper. **Do not type the field as
 `image`** — that routes it through the JPEG print conversion and turns a crisp
 vector into a bitmap, besides handing it to the photo-upload and MLS
 photo-matching paths, which a QR has no business being in.
 
 ### `qrSizeIn` — measured, and floored at 0.9in
 
-`qrSizeIn` is the printed edge length in INCHES. Measure the source QR's box in
-points and divide by 72. A schema cannot measure CSS, so this declaration is
+`qrSizeIn` is the printed edge length in INCHES **of the code itself** — the
+image box, EXCLUDING any padding the slot adds around it. Measure the source
+QR's box in points and divide by 72.
+
+Which one it measures is load-bearing: a 0.9in slot with 0.1in of padding holds
+a 0.7in code, below what a phone reads off paper. Declaring the outer box would
+pass the check and print something unscannable. A schema cannot measure CSS, so this declaration is
 what the app checks scannability against.
 
 **The minimum is 0.9in (64.8pt).** A real code is 25 modules plus a 4-module
@@ -726,8 +759,15 @@ click:
 .qr-slot img { width: 100%; height: 100%; display: block; }
 /* An <img> with an empty src still paints: a broken-image icon and its alt text,
    right on top of the placeholder. Hide it until it has a real value. */
-.qr-slot img:not([src]), .qr-slot img[src=""] { display: none; }
+/* opacity, NOT display:none. The element carrying `data-field` must keep its
+ BOX: the editor selects a field by hit-testing what the agent clicked, so a
+ zero-size img makes the empty slot unselectable — the click lands on the
+ wrapper, which has no data-field, and "make editable" then says there is no
+ text to promote. Found 2026-08-30 on the first real QR templates. */
+.qr-slot img:not([src]), .qr-slot img[src=""] { opacity: 0; }
 .qr-slot::after {
+  /* Must not intercept the click, or the field is unselectable. */
+  pointer-events: none;
   content: "QR code — click to choose";
   position: absolute; inset: .06in;
   display: flex; align-items: center; justify-content: center; text-align: center;
