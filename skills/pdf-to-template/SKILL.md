@@ -196,11 +196,11 @@ entirely otherwise; contract §2).
   `template.html` — including `locate-field`/`flash-field`, which are REQUIRED for
   every new conversion (contract.md §6.4).
 - `node $SCRIPTS/verbatim-diff.mjs <templateDir>` — contract JS zone unchanged.
-- `node $SCRIPTS/fitcheck.mjs <templateDir>` — the three autofit width traps the
-  ENGINE CANNOT SEE (contract §6.4b): a fit target with no explicit width (it
-  shrink-wraps, so autofit does nothing at all), one that runs past the trim, and
-  one that runs under a neighbour on the same page. All three are properties of
-  widths YOU set. Skips cleanly when a template has no autofit.
+- `node $SCRIPTS/fitcheck.mjs <templateDir>` — autofit widths the ENGINE CANNOT
+  SEE (contract §6.4b): a fit target running past the TRIM, or under a NEIGHBOUR
+  on the same page. Warns about a target with no width it can find — static
+  analysis can prove a width is declared, never that one is absent. Skips cleanly
+  when a template has no autofit.
 - `node $SCRIPTS/fontcheck.mjs <font> "<the actual data.json strings>"` for each bundled
   face — confirms real glyph coverage (this is how you catch blank-glyph risk WITHOUT
   rendering, which matters most in no-browser mode).
@@ -210,6 +210,12 @@ entirely otherwise; contract §2).
   against `data.json` content. This is your geometry/typography/content audit.
 
 **Full mode only** (pixel-accurate visual — skip entirely in no-browser mode):
+- `node $SCRIPTS/fitprobe.mjs <templateDir>` — renders the template and watches the
+  autofit engine work, then **re-renders with every text field filled to its own
+  declared `maxChars`**. Catches what static cannot: a box that grows with its
+  text, a line that hits the floor at its declared maximum, a collision that only
+  appears with real copy, and a FIT_TARGETS entry the engine never stamped.
+  Overlaps present in the shipped sample are treated as the design and ignored.
 - `node $SCRIPTS/serve.cjs <templateDir> 8137 &`
 - `SHOOT_SEL="#page1" node $SCRIPTS/shoot.mjs http://localhost:8137/template.html work/r1.png 850 1100`
   (one per page) — must report no console/asset errors.

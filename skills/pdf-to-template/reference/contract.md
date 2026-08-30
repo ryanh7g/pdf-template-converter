@@ -991,21 +991,52 @@ and `data-fit-overflow`. A console audit:
   .map(n => [n.id, n.dataset.fitScale, n.dataset.fitOverflow]);
 ```
 
-**`fitcheck.mjs` audits traps (a) and (b) mechanically**, plus a third: a fit
-target whose box runs past the TRIM, where the engine fits the text correctly
-and the guillotine removes the overhang. Run it in step 7 — it needs no browser,
-because those widths are declared in the CSS.
+#### Two audits, and what each can honestly prove
 
-Run across the 45 shipped templates that carry the engine, it found **84
-instances of trap (a) in 33 of them** — `.ag-name` 21 times, `.headline` 9 —
-each one a fit target that shrink-wraps, so autofit silently does nothing for it.
-No trap (b) or (c) survives in the library, which matches the PC-8 collision
-having been fixed across all 24 postcards.
+**`fitcheck.mjs`** — no browser. Reads the declared widths and checks that a fit
+target does not run past the TRIM, and does not run under a NEIGHBOUR on the
+same page. Both are failures. It also reports a target with no width it can
+find, as a WARNING pointing at fitprobe.
 
-**Honest status:** the engine has been observed EXECUTING on one template (AVANT
-PC-8: an address needing 427.6pt rendered at 356.9pt in a 377pt band — 0.835
-scale, above the floor). Every other template's runtime behaviour is inferred;
-`fitcheck` audits the static widths, not the shrinking itself.
+That warning is a warning because of what happened when it was an error. The
+first version failed on it and reported **84 shrink-wrapping targets across 33
+templates**. A browser pass then measured all 45 and found **ZERO boxes that
+actually grow with their text**: the widths come from a companion class
+(`class="abs blk-1 ag-name"` takes its width from `.blk-1`), a parent, or a
+shorthand. Composing the element's full class list cut 84 to 9, and all 9 also
+measured fixed. **Static analysis can prove a width is DECLARED; it cannot prove
+one is ABSENT.**
+
+**`fitprobe.mjs`** — full mode. Renders the template, calls `render()` and reads
+the engine's own output. It answers what static cannot:
+
+- did the engine RUN, and did every declared target get stamped;
+- does a box GROW with its text (trap (a), measured rather than inferred);
+- does a line hit the FLOOR;
+- do two elements COLLIDE, using real rects.
+
+**And it stresses the content**, which is the part that finds new bugs. Each text
+field is filled to ITS OWN DECLARED `maxChars` — the longest value the template
+says it accepts. If it cannot render that, either the box is too small or
+`maxChars` is a lie.
+
+Two rules that keep it honest: an overlap present with the SHIPPED sample is the
+DESIGN, not a defect — AVANT's stat chips deliberately sit over the photos and
+`rules.json` says so — so only overlaps that APPEAR under stress are reported.
+And the floor is read from the template, because the postcards run a newer
+engine reaching 0.73 rather than the 0.80 documented here.
+
+**What the stress pass found across the 45 templates carrying the engine: 51
+lines that hit the floor at their own declared `maxChars`, in 31 templates.**
+Every AVANT family, plus Minimal and Mod. Those are real: the template cannot
+render the longest value its own schema permits. Fixing each is a judgment call
+between widening the box and lowering `maxChars`.
+
+**Honest status, updated:** the handoff recorded the engine as observed on ONE
+template. `fitprobe` has now run it on all 45 that carry it, under both the
+shipped sample and stressed content. What remains unverified is how it LOOKS —
+these checks measure geometry, not whether 0.73 scale still resembles the
+approved comp.
 
 #### The other engine — `__flowBody`, Sectional flyers only
 

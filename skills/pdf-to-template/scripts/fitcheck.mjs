@@ -121,12 +121,37 @@ console.log(`\nfitcheck — ${targets.length} fit target(s)\n`);
 // ── (a) explicit width ────────────────────────────────────────────────────
 const boxes = [];
 for (const sel of targets) {
-  const d = declsFor(sel);
-  const inlineHasWidth = new RegExp(`class="[^"]*${sel.replace(/^\./, '')}[^"]*"[^>]*style="[^"]*width\\s*:`).test(html);
+  // EVERY CLASS ON THE ELEMENT, not just this one.
+  //
+  // A fit target rarely carries its geometry on its own class:
+  // `class="abs blk-1 ag-name ln-name"` gets its width from `.blk-1`. Checking
+  // the `.ag-name` rule alone reported 84 shrink-wrapping targets across the
+  // library, and a browser pass proved almost none of them real. Composing the
+  // element's full class list is what makes this check honest.
+  const cls = sel.replace(/^\./, '');
+  const companions = new Set([sel]);
+  for (const m of html.matchAll(new RegExp(`class="([^"]*\\b${cls}\\b[^"]*)"`, 'g'))) {
+    for (const c of m[1].split(/\s+/).filter(Boolean)) companions.add('.' + c);
+  }
+  const d = {};
+  for (const c of companions) Object.assign(d, declsFor(c));
+  const inlineHasWidth = new RegExp(`class="[^"]*\\b${cls}\\b[^"]*"[^>]*style="[^"]*width\\s*:`).test(html);
   const w = d.width ? toPt(d.width) : null;
 
   if (!d.width && !inlineHasWidth) {
-    bad(`${sel} has NO explicit width — it shrink-wraps, so scrollWidth === clientWidth and autofit does nothing at all (§6.4b trap a)`);
+    // A WARNING, NOT A FAILURE — and the demotion was earned.
+    //
+    // The first version failed on this and reported 84 shrink-wrapping targets
+    // across 33 templates. A browser pass measured all 45 and found ZERO boxes
+    // that actually grow with their text: the widths come from a companion
+    // class, a parent, or a shorthand this parser cannot follow. Composing the
+    // element's full class list cut it to 9, and every one of those 9 also
+    // measured fixed in the browser.
+    //
+    // Static analysis can prove a width is DECLARED. It cannot prove one is
+    // ABSENT. So this points at fitprobe rather than pretending to an answer.
+    warn(`${sel} — no explicit width found on ${[...companions].join(' ')}. If it really shrink-wraps, autofit can never fire (§6.4b trap a) — but this check CANNOT see widths from a parent or shorthand. Confirm with: node fitprobe.mjs <templateDir>`);
+    continue;
     continue;
   }
   if (w === null) {
@@ -206,7 +231,18 @@ for (const b of boxes) {
   }
   if (!nearest) continue;
   checkedRows++;
-  if (right > nearest.left + 0.5) {
+  // A THRESHOLD, because adjacency is not collision. Boxes that abut are
+  // normal — one template has a fit target ending 1.3pt into its neighbour,
+  // which no reader will ever see. The PC-8 bug ate 30pt of a name. Six points
+  // is roughly half a glyph at display size: below it, say so; above it, fail.
+  const OVERLAP_PT = 6;
+  const by = right - nearest.left;
+  if (by > 0.5 && by <= OVERLAP_PT) {
+    warn(
+      `${b.sel} ends ${by.toFixed(1)}pt inside ${nearest.sel} — adjacency rather than a collision at this size, ` +
+      `but tighten it if the two ever carry long values`,
+    );
+  } else if (by > OVERLAP_PT) {
     crossings++;
     bad(
       `${b.sel} runs to ${right.toFixed(1)}pt but ${nearest.sel} starts at ${nearest.left.toFixed(1)}pt — ` +
