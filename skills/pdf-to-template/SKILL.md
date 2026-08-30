@@ -60,9 +60,13 @@ points for every element.
 
 **3. Extract assets** into the template's `assets/`:
 - Raster photos: copy the embedded images (or re-crop from the render).
-- Vector marks (logos, icons, QR, stat icons are NOT raster XObjects): crop them
+- Vector marks (logos, icons, stat icons are NOT raster XObjects): crop them
   from the render with `crop.mjs`, e.g.
   `node $SCRIPTS/crop.mjs work/page-1.png 300 '[["logo",68,63,117,17]]' tmp`.
+- **NEVER crop a QR code.** A QR is a picture of a URL, and the one in the source
+  encodes the ORIGINAL designer's link. Cropping it prints that same code on
+  every agent's flyer, forever, on paper nobody can correct. Measure its box and
+  emit a `type: "qr"` field instead — **contract §5.7**.
 
 **3b. Cobranding — ASK, do not guess (JUDGMENT GATE).** With the marks you just
 extracted in front of you, use **AskUserQuestion** — one question, always asked, on
@@ -72,6 +76,20 @@ every conversion:
 > personal brand mark), as opposed to only the brokerage lockup?
 > — **No — brokerage only** (default) · **Yes — it has a spot for the agent's logo**
 
+
+**3c. A QR code — ASK ONLY IF IT IS TOO SMALL (JUDGMENT GATE).** If the design
+has a QR, measure its box and emit a `type: "qr"` field at that size in inches
+(contract §5.7). Two rules:
+
+- **Never decode the source QR to pick a default destination.** That url belongs
+  to the original design's owner. Omit `qrDestination` and the agent chooses.
+- **If the source QR measures under 64.8pt (0.9in)** — common on postcards — ask,
+  rather than emitting a value the app will reject with no explanation:
+
+> **This design's QR is 0.62in. The app's minimum is 0.9in, below which a printed
+> code is unreliable to scan.**
+> — **Enlarge it to 0.9in** (recommended; the layout shifts slightly) ·
+> **Keep the source size** (the template is rejected until someone changes it)
 **Never infer this from the artwork.** A converter that hunts for "a logo" in every
 PDF tags the BROKERAGE mark, and then every design made from that template silently
 replaces the brokerage lockup with an agent's logo. A missing tag is a visible gap an
@@ -122,6 +140,23 @@ bleed CSS structure and the entire edit-mode/messaging/boot JS.
 - Every editable node needs `id="f-…"`, `data-field="<key>"` (and `data-index`
   for list images), plus a matching `render()` binding.
 
+**5b. Autofit — emit the shrink-to-fit engine (contract §6.4b).** A real address
+is `31680 RANCHO VIEJO ROAD`, not the comp's 7 characters, and nothing in a
+fixed layout reflows. Put the engine INSIDE the body of `render()` — that is the
+only authorable JS zone, and `verbatim-diff.mjs` fails the template if you move
+it. Two rules you own, because the engine cannot check them itself:
+
+- **Every fit target needs an EXPLICIT `width`.** An auto-width `.abs` element
+  shrink-wraps its content, so `scrollWidth === clientWidth` and the engine
+  silently does nothing.
+- **That width is the DISTANCE TO THE NEXT ELEMENT on the row, not the panel
+  width.** Sizing off the panel put a 200pt agent name under a headshot starting
+  at 275.4pt in a 170pt gap; the name rendered as `ALEXANDRA MONTGOM▌`. Five
+  instances were found across 24 postcards.
+
+Keep letter-spacing in `em`, never `pt` — tracking is most of these lines' width
+and only `em` shrinks with the type. Do not fit multi-line body copy.
+
 **6. Write the JSON.** `data.json` (real extracted content + fixed render-only
 strings), `schema.json` (editable subset; compute image `aspect`/`minPx`; **tag
 image fields — `role:"property"` + `classifyHints` on listing photos,
@@ -161,6 +196,11 @@ entirely otherwise; contract §2).
   `template.html` — including `locate-field`/`flash-field`, which are REQUIRED for
   every new conversion (contract.md §6.4).
 - `node $SCRIPTS/verbatim-diff.mjs <templateDir>` — contract JS zone unchanged.
+- `node $SCRIPTS/fitcheck.mjs <templateDir>` — autofit widths the ENGINE CANNOT
+  SEE (contract §6.4b): a fit target running past the TRIM, or under a NEIGHBOUR
+  on the same page. Warns about a target with no width it can find — static
+  analysis can prove a width is declared, never that one is absent. Skips cleanly
+  when a template has no autofit.
 - `node $SCRIPTS/fontcheck.mjs <font> "<the actual data.json strings>"` for each bundled
   face — confirms real glyph coverage (this is how you catch blank-glyph risk WITHOUT
   rendering, which matters most in no-browser mode).
@@ -170,6 +210,12 @@ entirely otherwise; contract §2).
   against `data.json` content. This is your geometry/typography/content audit.
 
 **Full mode only** (pixel-accurate visual — skip entirely in no-browser mode):
+- `node $SCRIPTS/fitprobe.mjs <templateDir>` — renders the template and watches the
+  autofit engine work, then **re-renders with every text field filled to its own
+  declared `maxChars`**. Catches what static cannot: a box that grows with its
+  text, a line that hits the floor at its declared maximum, a collision that only
+  appears with real copy, and a FIT_TARGETS entry the engine never stamped.
+  Overlaps present in the shipped sample are treated as the design and ignored.
 - `node $SCRIPTS/serve.cjs <templateDir> 8137 &`
 - `SHOOT_SEL="#page1" node $SCRIPTS/shoot.mjs http://localhost:8137/template.html work/r1.png 850 1100`
   (one per page) — must report no console/asset errors.

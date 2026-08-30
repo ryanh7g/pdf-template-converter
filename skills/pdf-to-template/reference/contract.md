@@ -160,7 +160,7 @@ Exact shape:
 {
   fields: Array<{
     key: string;          // dot-path into data.json, e.g. "stats.sqft", "photos.hero"
-    type: "text" | "richText" | "image" | "enum" | "list";
+    type: "text" | "richText" | "image" | "enum" | "list" | "qr";
     itemType?: "text" | "richText" | "image" | "enum" | "list";  // for list items
     label: string;        // short human label shown in the editor
     description: string;   // tells the AI the field's INTENT — write these well
@@ -177,6 +177,8 @@ Exact shape:
       fullBleed?: boolean; // image: source must cover trim + bleed
       values?: string[];   // enum: allowed values
     };
+    qrSizeIn?: number;      // qr ONLY, REQUIRED: printed edge length in INCHES (min 0.9)
+    qrDestination?: string; // qr only, OPTIONAL default. NEVER decode it from the source PDF.
   }>;
 }
 ```
@@ -203,6 +205,8 @@ Field-type guide:
 - `list` — an ordered set. With `itemType:"text"` it's repeated lines (e.g. contact
   lines). With `itemType:"image"` it's a fixed row of photos (e.g. exactly 3).
 - `enum` — one value from `constraints.values`.
+- `qr` — a QR code the APP generates. **See §5.7 — do not crop the source PDF's QR
+  into `assets/`.**
 
 **Deriving image constraints from the layout** (do this per image box):
 
@@ -640,6 +644,110 @@ point the human at the admin editor. That is the designed path, not a failure.
 mark is the brokerage lockup, it stays a fixed `data.json` default (e.g. a
 `brokerLogo` field) and is never mapped to `logo`.
 
+## 5.7 QR codes — NEVER bake the source PDF's code into the template
+
+**If the source design has a QR code, do NOT crop it into `assets/`.**
+
+This is a correctness rule, not a preference. A QR is a picture of a URL. The
+one in the source PDF encodes *the original designer's* link — a specific
+agent's property page, a campaign that ended, a listing that sold. Cropping it
+produces a template that prints that same code on every agent's flyer, forever.
+It is wrong on paper, where nothing can correct it: a postcard in a mailbox
+cannot be re-issued.
+
+Every other vector mark (brokerage lockup, stat icons, an Equal Housing badge)
+IS cropped, because it means the same thing on every copy. A QR does not.
+
+### What to emit instead
+
+**A `qr` schema field**, which the app fills at design time by registering a
+short link and rendering the code:
+
+```json
+{
+  "key": "qr.listing",
+  "type": "qr",
+  "label": "QR code",
+  "description": "Scans through to the property page. The agent chooses which page.",
+  "required": true,
+  "qrSizeIn": 1.0
+}
+```
+
+**And an ordinary image element** in `template.html`, positioned where the
+source QR sat:
+
+```html
+<div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" alt="QR code"></div>
+```
+
+The app writes a `data:image/svg+xml` URI into it, so `render()`'s existing
+`img(id, value)` helper works with no change. **Do not type the field as
+`image`** — that routes it through the JPEG print conversion and turns a crisp
+vector into a bitmap, besides handing it to the photo-upload and MLS
+photo-matching paths, which a QR has no business being in.
+
+### `qrSizeIn` — measured, and floored at 0.9in
+
+`qrSizeIn` is the printed edge length in INCHES. Measure the source QR's box in
+points and divide by 72. A schema cannot measure CSS, so this declaration is
+what the app checks scannability against.
+
+**The minimum is 0.9in (64.8pt).** A real code is 25 modules plus a 4-module
+quiet zone, which needs 0.83in to read reliably off paper at arm's length.
+
+Designers put 0.5in codes on postcards routinely, so **if the source QR measures
+under 64.8pt, ASK — do not silently emit an under-minimum value**, which
+produces a template that fails the app's own gate with no explanation:
+
+> **This design's QR is 0.62in. The app's minimum is 0.9in, below which a
+> printed code is unreliable to scan.**
+> — **Enlarge it to 0.9in** (recommended; the layout shifts slightly) ·
+> **Keep the source size** (the template will be rejected until someone changes it)
+
+### `qrDestination` — leave it out, and NEVER decode the source
+
+`qrDestination` is an optional default. **Do not read the source PDF's QR to
+find one.** That URL belongs to the original design's owner; using it as a
+default silently proposes one agent's link to every other agent.
+
+Omit the field and the agent chooses when they open the design. Offer a default
+only if the human converting the template tells you which one — the same
+judgment gate as cobranding in §5.6: ask, never infer.
+
+### The placeholder
+
+Until the agent picks a destination the `<img>` has no `src`, so the slot must
+say what it is rather than showing a blank white square nobody has a reason to
+click:
+
+```css
+.qr-slot { position: relative; width: 1in; height: 1in; padding: .06in; background: #fff; }
+.qr-slot img { width: 100%; height: 100%; display: block; }
+/* An <img> with an empty src still paints: a broken-image icon and its alt text,
+   right on top of the placeholder. Hide it until it has a real value. */
+.qr-slot img:not([src]), .qr-slot img[src=""] { display: none; }
+.qr-slot::after {
+  content: "QR code — click to choose";
+  position: absolute; inset: .06in;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  font-size: 7pt; line-height: 1.25; color: #8a8a8a;
+  border: 1px dashed #c4c4c4; border-radius: 2px;
+}
+  /* NOT `img[src]` — the fill helper does `el.src = ""` when there is no value,
+     which SETS the attribute, so `img[src]` matches an empty one and the
+     placeholder disappears behind a blank white square. Found 2026-08-30 by
+     rendering it. */
+  .qr-slot:has(img[src]:not([src=""]))::after { content: none; border: 0; }
+```
+
+The quiet zone is INSIDE the generated SVG, so the padding above is extra
+breathing room rather than the margin itself. Keep artwork clear of the slot —
+a code with something touching its edge is the classic reason a phone will not
+read it.
+
+---
+
 ## 6. `template.html` — the layout + render contract (MOST IMPORTANT)
 
 This one file is the fixed layout AND the data→DOM renderer AND the editor
@@ -753,6 +861,219 @@ map your `data.json` structure onto your `id="f-…"` nodes (mirror the referenc
 `text("f-headline", d.headline)`, `applyImg("f-hero", d.photos?.hero)`, etc.). Use
 `text()` for plain strings, `html()` + `esc()` for single rich strings, `lines()`
 for `list` text arrays (joins with `<br>`), and `applyImg()` for every image.
+
+### 6.4b Autofit — shrink-to-fit for tracked display type
+
+Every template here is a fixed-layout, absolutely-positioned reproduction:
+hard-coded `left`/`top`/`width` in points, no flow to push against. The CONTENT
+is variable. `ADDRESS` in a comp is 7 characters; a real one is
+`31680 RANCHO VIEJO ROAD`. `MICHAEL HICKMAN` is 15 characters;
+`ALEXANDRA MONTGOMERY-WHITFIELD` is 30.
+
+Without intervention the long value overflows its box — over a photo, or past
+the trim — or wraps to a line the layout has no room for. Autofit shrinks the
+type until it fits and FLAGS the case where even the floor is not enough.
+
+**It is a runtime safety net, not a substitute for validation.** `schema.json`
+still carries `maxChars`/`maxLines` so the editor warns at authoring time. If
+you widen a box, revisit `maxChars`.
+
+#### Where it goes, and why it cannot go anywhere else
+
+`verbatim-diff.mjs` requires everything in `<script>` to match the skeleton
+byte-for-byte EXCEPT the body of `render(data)`. So the engine is defined
+**inside `render()`**, after the field bindings. Do not move it to its own
+`<script>`, do not attach it to the boot sequence, do not put it in an external
+file — all three fail the diff. CSS for fitted elements goes in the per-template
+`<style>` block, which is not verbatim-checked.
+
+#### The engine
+
+```js
+var FIT_FLOOR   = 0.80;                    // never shrink below 80% of design size
+var FIT_TARGETS = ".fr-address, .fr-city, .chip, .price-bar, .ag-name, .ag-phone, .ag-line, .ag-dre";
+
+function __fitText(el) {
+  if (!el) return;
+  if (!el.getAttribute("data-fit-base")) {                       // cache design size ONCE
+    el.setAttribute("data-fit-base", parseFloat(getComputedStyle(el).fontSize));
+  }
+  var base = parseFloat(el.getAttribute("data-fit-base"));
+  if (!base) return;
+  el.style.whiteSpace = "nowrap";                                // single-line by contract
+  el.style.fontSize   = base + "px";                             // always start from design size
+  var avail = el.clientWidth;
+  if (!avail) return;                                            // not laid out yet — bail
+  var size = base, floor = base * FIT_FLOOR, step = base * 0.005, guard = 0;
+  while (el.scrollWidth > avail && size > floor && guard++ < 200) {
+    size -= step;
+    el.style.fontSize = size + "px";
+  }
+  var fits = el.scrollWidth <= avail;
+  el.setAttribute("data-fit-scale",    (size / base).toFixed(3));
+  el.setAttribute("data-fit-overflow", fits ? "false" : "true");
+}
+
+function __fitAll() {
+  var nodes = document.querySelectorAll(FIT_TARGETS);
+  for (var i = 0; i < nodes.length; i++) __fitText(nodes[i]);
+}
+
+__fitAll();
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(__fitAll);
+```
+
+#### Five decisions you must not undo
+
+1. **Letter-spacing in `em`, NEVER `pt`.** The single most important detail.
+   These designs use extreme tracking — 0.359em on the AVANT address, 0.533em on
+   its city line. Tracking is MOST of the line's width, not a rounding detail.
+   In `em` it shrinks with the font size and the line stays optically correct;
+   in points the glyphs would shrink while the gaps stayed fixed, recovering
+   almost no width.
+2. **`text-indent` = `letter-spacing` on centred text.** CSS adds the trailing
+   letter-space after the final glyph, pushing centred text left by half a
+   space. Setting `text-indent` to the same em value cancels it. Right-aligned
+   tracked blocks get a NEGATIVE `margin-right` for the same reason at the other
+   edge.
+3. **Idempotency via `data-fit-base`.** The design size is cached on first run
+   and every run restarts from it. Without this a re-render shrinks an
+   already-shrunk element again, compounding — and the editor's live preview
+   calls `render()` many times.
+4. **Two passes: immediate, then `document.fonts.ready`.** The first measures
+   with whatever face is resolved. If webfonts have not loaded that is a
+   fallback with different metrics and the answer is wrong. Do not remove the
+   second.
+5. **The floor hands back; it does not clamp.** At 80% the loop stops and sets
+   `data-fit-overflow="true"`. NOTHING IS TRUNCATED. Below ~80% the piece stops
+   resembling the approved comp, so a human should shorten the copy. Record it
+   in `rules.json` as a `fit-floor` constraint with `owner: "user"`.
+
+**Deliberately NOT fitted:** `description`/`blurb` body copy. Multi-line
+justified text looks worse shrunk; validate its length with `maxChars` instead.
+
+#### Six traps, each a real defect already found
+
+**(a) An auto-width absolutely-positioned element is INVISIBLE to the check.**
+An `.abs` with no explicit `width` shrink-wraps its content, so
+`scrollWidth === clientWidth` always and the engine silently does nothing. Hit
+on the Mod `.price`. **Give every fit target an explicit `width`.**
+
+**(b) The box must not run past the TRIM.** The engine fits the text to whatever
+box it is given, so an overhang is correct on screen and removed at the
+guillotine. `fitcheck` checks this against `--trim-w`.
+
+**(c) The width must be the AVAILABLE GAP, not the panel width.** The worst bug
+found. On AVANT PC-8 the agent block got `width: 200pt` at `left: 105.6pt`,
+sized off the panel — but the co-agent headshot starts at `275.4pt`, so the real
+gap is ~170pt. The engine fitted the name to 200pt and the headshot, later in
+DOM order, painted over the last 30pt. The name read `ALEXANDRA MONTGOM▌`.
+
+The engine CANNOT detect this — it only knows its own box. **You set these
+widths, so this is yours to get right: measure the distance to the next element
+on that row.** An audit found five instances across 24 postcards.
+
+**(d) Flex containers are the least predictable case.** `.chip`, `.price-bar`
+and the Mod stat boxes are `display:flex` with centred content, where
+`scrollWidth` overflow detection is less reliable. Verified on AVANT PC only.
+First suspect when a chip or bar misbehaves.
+
+**(e) A post-build patch gets silently wiped.** The engine was once applied by a
+post-processing script that patched generated files; re-running a family's
+builder regenerated them WITHOUT it, and it vanished from two templates
+unnoticed. **Emit the engine from the builder itself.**
+
+**(f) Fonts and assets must actually resolve.** Open `preview.html` from an
+unpacked folder, never inside a zip viewer — relative `fonts/` and `assets/`
+paths fail there, the engine measures fallback metrics and shrinks wrongly.
+
+#### Checking it
+
+After a render, every fitted node carries `data-fit-scale` (`1.000` = untouched)
+and `data-fit-overflow`. A console audit:
+
+```js
+[...document.querySelectorAll('[data-fit-scale]')]
+  .filter(n => n.dataset.fitOverflow === 'true' || +n.dataset.fitScale < 0.9)
+  .map(n => [n.id, n.dataset.fitScale, n.dataset.fitOverflow]);
+```
+
+#### Two audits, and what each can honestly prove
+
+**`fitcheck.mjs`** — no browser. Reads the declared widths and checks that a fit
+target does not run past the TRIM, and does not run under a NEIGHBOUR on the
+same page. Both are failures. It also reports a target with no width it can
+find, as a WARNING pointing at fitprobe.
+
+That warning is a warning because of what happened when it was an error. The
+first version failed on it and reported **84 shrink-wrapping targets across 33
+templates**. A browser pass then measured all 45 and found **ZERO boxes that
+actually grow with their text**: the widths come from a companion class
+(`class="abs blk-1 ag-name"` takes its width from `.blk-1`), a parent, or a
+shorthand. Composing the element's full class list cut 84 to 9, and all 9 also
+measured fixed. **Static analysis can prove a width is DECLARED; it cannot prove
+one is ABSENT.**
+
+**`fitprobe.mjs`** — full mode. Renders the template, calls `render()` and reads
+the engine's own output. It answers what static cannot:
+
+- did the engine RUN, and did every declared target get stamped;
+- does a box GROW with its text (trap (a), measured rather than inferred);
+- does a line hit the FLOOR;
+- do two elements COLLIDE, using real rects.
+
+**And it stresses the content**, which is the part that finds new bugs. Each text
+field is filled to ITS OWN DECLARED `maxChars` — the longest value the template
+says it accepts. If it cannot render that, either the box is too small or
+`maxChars` is a lie.
+
+Two rules that keep it honest: an overlap present with the SHIPPED sample is the
+DESIGN, not a defect — AVANT's stat chips deliberately sit over the photos and
+`rules.json` says so — so only overlaps that APPEAR under stress are reported.
+And the floor is read from the template, because the postcards run a newer
+engine reaching 0.73 rather than the 0.80 documented here.
+
+**Across the 45 templates carrying the engine, 51 lines hit the floor at their
+own declared `maxChars`, in 31 templates** — every AVANT family, plus Minimal
+and Mod.
+
+**That is the system WORKING, not a defect list. Do not widen those boxes and do
+not lower those `maxChars`** (owner, 2026-08-30). The floor is a hand-back by
+design: nothing is truncated, `data-fit-overflow` is raised, QA reports it and
+the agent shortens the copy — which is why `rules.json` records `fit-floor` with
+`owner: "user"`. `maxChars` is the outer bound of what is *legal*, not a promise
+that every legal value looks good at design size.
+
+Read the number as coverage instead: it says the engine is reachable and
+correctly signalling on 31 templates. What WOULD be a defect is a line that
+overflows without raising the flag.
+
+**Honest status, updated:** the handoff recorded the engine as observed on ONE
+template. `fitprobe` has now run it on all 45 that carry it, under both the
+shipped sample and stressed content. What remains unverified is how it LOOKS —
+these checks measure geometry, not whether 0.73 scale still resembles the
+approved comp.
+
+#### The other engine — `__flowBody`, Sectional flyers only
+
+`sectional-2-flyer-4/5/6` carry a second, unrelated mechanism: one `description`
+string flowed across three columns of different widths and depths, each paired
+with and vertically centred against a photo. Distribution is BALANCED, not
+greedy — it binary-searches the shallowest common depth at which all the copy
+fits, so no column is left empty. Breaks land on word boundaries; copy too long
+for all three sets `.mb-overflow` and a non-zero `window.__flowLeftover`, and is
+never truncated.
+
+That code was inherited verbatim from a client-supplied template. **Preserve it
+as-is.** Those templates also use an OLDER autofit (`[data-fit]` attributes,
+reducing letter-spacing toward 0 BEFORE touching font-size, measuring with
+`Range` + `getClientRects`). That approach is arguably better — it loses the
+airiness before it loses the type size, and `getClientRects` handles flex
+containers more predictably than `scrollWidth`, which would likely fix trap (d).
+Two implementations coexist. **Do not "unify" them without testing both
+families.**
+
+---
 
 ### 6.5 Full reference `template.html`
 
