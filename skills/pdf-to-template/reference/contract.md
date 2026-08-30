@@ -724,6 +724,9 @@ click:
 ```css
 .qr-slot { position: relative; width: 1in; height: 1in; padding: .06in; background: #fff; }
 .qr-slot img { width: 100%; height: 100%; display: block; }
+/* An <img> with an empty src still paints: a broken-image icon and its alt text,
+   right on top of the placeholder. Hide it until it has a real value. */
+.qr-slot img:not([src]), .qr-slot img[src=""] { display: none; }
 .qr-slot::after {
   content: "QR code — click to choose";
   position: absolute; inset: .06in;
@@ -731,7 +734,11 @@ click:
   font-size: 7pt; line-height: 1.25; color: #8a8a8a;
   border: 1px dashed #c4c4c4; border-radius: 2px;
 }
-.qr-slot:has(img[src])::after { content: none; border: 0; }
+  /* NOT `img[src]` — the fill helper does `el.src = ""` when there is no value,
+     which SETS the attribute, so `img[src]` matches an empty one and the
+     placeholder disappears behind a blank white square. Found 2026-08-30 by
+     rendering it. */
+  .qr-slot:has(img[src]:not([src=""]))::after { content: none; border: 0; }
 ```
 
 The quiet zone is INSIDE the generated SVG, so the padding above is extra
