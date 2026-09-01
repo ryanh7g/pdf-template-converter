@@ -429,7 +429,7 @@ a `${Token}`. The fields the shipped templates rely on:
 | `LivingArea` | interior sq ft |
 | `LotSizeSquareFeet` | lot sq ft |
 | `ListPriceUSD` | list price, **pre-formatted** "$940,000" — **prefer this for a displayed price** (already includes the `$`, so don't prefix another) |
-| `ListPrice` | list price as a RAW number (`940000`, no separators) — only if you format it yourself |
+| `ListPrice` | list price as a RAW number (`940000`, no separators). **`selfcheck` now FAILS on this in a mapping** — a text field is filled verbatim, so there is nowhere to format it. It shipped once and read "940000" on a real flyer |
 | `PublicRemarks` | the listing's marketing description |
 | `OpenHouse` | open-house line (when present) |
 

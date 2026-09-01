@@ -68,6 +68,31 @@ if (existsSync(`${dir}/mapping.json`)) {
       if (!schemaKeys.has(k)) bad(`mapping.json key '${k}' has no schema field`);
       else if (!textKinds.has(get(schema.fields.find(f => f.key === k), 'type'))) bad(`mapping.json key '${k}' maps a non-text field (only text/richText map; photos use role:"property")`);
     }
+    // ── RAW NUMBER WHERE A DISPLAY-READY TOKEN EXISTS ─────────────────────
+    // The contract already says to prefer ${ListPriceUSD}. A converted template
+    // still shipped ${ListPrice}, and the defect was invisible until a real
+    // listing was loaded and the flyer read "940000" instead of "$940,000" —
+    // by which time it was on staging. Guidance the model can skip is not a
+    // check; this is.
+    //
+    // FAILS rather than warns: there is no legitimate reason to place a raw
+    // MLS number in a text field a human reads. If a template genuinely wants
+    // to format the number itself it cannot, because these fields are strings
+    // filled verbatim.
+    const RAW_NUMERIC = {
+      ListPrice: 'ListPriceUSD',
+      ClosePrice: 'ClosePriceUSD',
+      OriginalListPrice: 'OriginalListPriceUSD',
+    };
+    for (const [k, v] of Object.entries(fields)) {
+      if (typeof v !== 'string') continue;
+      for (const [raw, formatted] of Object.entries(RAW_NUMERIC)) {
+        if (v.includes('${' + raw + '}')) {
+          bad(`mapping.json '${k}' uses \${${raw}} — the RAW number (940000). Use \${${formatted}}, which is pre-formatted ("$940,000") and already includes the $. See contract.md §5.5.`);
+        }
+      }
+    }
+
     if (imageFields.length > 0 && propertySlots.length === 0) warn('mapping.json present but NO image field has role:"property" — MLS photos will not place');
 
     // Agent-branding maps (contract §5.5): { "<schema.key>": "<token>" }. Tokens
