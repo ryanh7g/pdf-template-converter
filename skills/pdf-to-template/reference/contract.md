@@ -681,6 +681,20 @@ source QR sat:
 <div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" data-qr alt="QR code"></div>
 ```
 
+**A placeholder drawn over the slot needs `pointer-events: none`.** The dashed
+"click to choose" hint is usually a `::before`/`::after` on the SLOT with
+`position:absolute; inset:0`. A pseudo-element hit-tests, and it paints after
+the `<img>`, so it takes the click — which then targets the slot, and the slot
+carries no `data-field`, so nothing opens. Same dead click as `display:none`,
+different cause, and fixing one without the other leaves the QR just as dead.
+
+```css
+.qr-slot::after { content:"QR code — click to choose"; position:absolute; inset:0;
+                  pointer-events:none; /* REQUIRED */ }
+```
+
+`selfcheck.mjs` refuses an absolutely-positioned QR placeholder without it.
+
 **Hide an empty slot with `opacity:0`, NEVER `display:none`.** The `<img>` has
 no `src` until a code is minted, so the slot is hidden and the parent's dashed
 placeholder shows through. `display:none` and `visibility:hidden` take the

@@ -79,6 +79,16 @@ if (qrFields.length) {
     if (/display\s*:\s*none|visibility\s*:\s*hidden/.test(rule))
       bad(`empty QR slot hidden with display:none/visibility:hidden — it receives no clicks, so the QR panel could never open. Use opacity:0 (contract §5.7): ${rule.trim().replace(/\s+/g, ' ')}`);
 }
+// Nothing may sit on top of the slot either. The dashed placeholder is usually
+// a ::before/::after on the SLOT with position:absolute; inset:0. A
+// pseudo-element hit-tests and paints after the <img>, so it takes the click,
+// which then targets the slot — and the slot carries no data-field, so nothing
+// opens. Same dead click as display:none, different cause.
+if (qrFields.length) {
+  for (const rule of html.match(/[^{}]*qr[^{}]*::(?:before|after)[^{]*\{[^}]*\}/gi) || [])
+    if (/position\s*:\s*absolute/.test(rule) && /content\s*:\s*(?!none)[^;]/.test(rule) && !/pointer-events\s*:\s*none/.test(rule))
+      bad(`QR placeholder overlay has no pointer-events:none — the pseudo-element takes the click instead of the QR image (contract §5.7): ${rule.trim().replace(/\s+/g, ' ').slice(0, 120)}`);
+}
 for (const m of domBody.matchAll(/<[^>]*\bdata-qr\b[^>]*>/g)) {
   const k = (m[0].match(/data-field="([^"]+)"/) || [])[1];
   const f = k && schema.fields.find(x => x.key === k);
