@@ -11,6 +11,12 @@ if (!dir) { console.error('usage: node selfcheck.mjs <templateDir>'); process.ex
 const J = f => JSON.parse(readFileSync(`${dir}/${f}`, 'utf8'));
 const schema = J('schema.json'), data = J('data.json'), manifest = J('manifest.json');
 const html = readFileSync(`${dir}/template.html`, 'utf8');
+// COMMENTS ARE NOT CODE. A template's comments discuss the very rules these
+// checks look for — one correct upload was refused because the comment above
+// its rule explained why it does NOT use the hidden display value, and the
+// pattern read that prose as the rule. Same self-match trap a grep gate and a
+// process watcher have both hit here. CSS pattern checks read this copy.
+const noComments = html.replace(/<!--[\s\S]*?-->/g, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ');
 let fail = 0; const bad = m => { console.log('  ✗ ' + m); fail++; };
 const warn = m => console.log('  ⚠ ' + m);
 const get = (o, p) => p.split('.').reduce((a, k) => a == null ? undefined : a[k], o);
@@ -63,8 +69,13 @@ for (const f of qrFields) {
     bad(`qr field '${f.key}' element has no data-qr attribute — the editor would treat it as a photo and the QR panel could never open (contract §5.7)`);
 }
 if (qrFields.length) {
-  if (!/data-qr/.test(html.slice(html.indexOf('<script>'))))
-    bad('a qr field exists but no handler mentions data-qr — the photo handlers must exclude the QR slot (contract §5.7)');
+  // Asked of the ACTUAL guards, not of whether the string appears. A template
+  // can mention data-qr in its CSS and still swallow every QR click.
+  const script = noComments.slice(noComments.indexOf('<script'));
+  if (/tagName\s*===?\s*["']IMG["']\s*\)\s*return/.test(script))
+    bad('click handler returns on EVERY image (`if (el.tagName === "IMG") return;`), so the QR click is swallowed too. Use `if (el.tagName === "IMG" && !el.hasAttribute("data-qr")) return;` (contract §5.7)');
+  if (/closest\(\s*["']img\[data-field\]["']\s*\)/.test(script))
+    bad('drag/zoom handlers select img[data-field] without excluding the QR, so the code is dragged like a photo. Use img[data-field]:not([data-qr]) (contract §5.7)');
   if (!/img\[data-qr\]|:not\(\[data-qr\]\)/.test(html))
     warn('no CSS distinguishes the QR slot from a photo slot — it will show a grab cursor (contract §5.7)');
 }
@@ -75,7 +86,7 @@ if (qrFields.length) {
 // is never minted — the slot cannot leave the state that blocks it. opacity:0
 // hides it and keeps it clickable.
 if (qrFields.length) {
-  for (const rule of html.match(/[^{}]*img(?::not\(\[src\]\)|\[src=""\])[^{]*\{[^}]*\}/g) || [])
+  for (const rule of noComments.match(/[^{}]*img(?::not\(\[src\]\)|\[src=""\])[^{]*\{[^}]*\}/g) || [])
     if (/display\s*:\s*none|visibility\s*:\s*hidden/.test(rule))
       bad(`empty QR slot hidden with display:none/visibility:hidden — it receives no clicks, so the QR panel could never open. Use opacity:0 (contract §5.7): ${rule.trim().replace(/\s+/g, ' ')}`);
 }
@@ -85,7 +96,7 @@ if (qrFields.length) {
 // which then targets the slot — and the slot carries no data-field, so nothing
 // opens. Same dead click as display:none, different cause.
 if (qrFields.length) {
-  for (const rule of html.match(/[^{}]*qr[^{}]*::(?:before|after)[^{]*\{[^}]*\}/gi) || [])
+  for (const rule of noComments.match(/[^{}]*qr[^{}]*::(?:before|after)[^{]*\{[^}]*\}/gi) || [])
     if (/position\s*:\s*absolute/.test(rule) && /content\s*:\s*(?!none)[^;]/.test(rule) && !/pointer-events\s*:\s*none/.test(rule))
       bad(`QR placeholder overlay has no pointer-events:none — the pseudo-element takes the click instead of the QR image (contract §5.7): ${rule.trim().replace(/\s+/g, ' ').slice(0, 120)}`);
 }

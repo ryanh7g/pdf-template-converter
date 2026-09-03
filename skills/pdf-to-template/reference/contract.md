@@ -716,6 +716,13 @@ a click that is deliberately swallowed so the photo tray can open instead
 (`if (el.tagName === "IMG") return;`). A QR slot is an `<img>`, so without the
 marker clicking it opens the photo panel and the QR panel is unreachable.
 
+**These two edits are not optional.** A template can carry `data-qr`,
+`opacity:0` and `pointer-events:none` and STILL be dead: an unguarded click
+handler bails on every image, and unguarded pointer handlers drag the code like
+a photo. Verified in a browser — with only the guard missing, a real click
+produced `img-grab`/`img-release` and the QR panel never opened. `selfcheck.mjs`
+refuses both.
+
 Exclude `[data-qr]` from every photo handler and let it through the click
 handler:
 
