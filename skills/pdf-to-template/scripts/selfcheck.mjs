@@ -68,6 +68,17 @@ if (qrFields.length) {
   if (!/img\[data-qr\]|:not\(\[data-qr\]\)/.test(html))
     warn('no CSS distinguishes the QR slot from a photo slot — it will show a grab cursor (contract §5.7)');
 }
+// An empty QR slot must still be CLICKABLE. The img has no src until a code is
+// minted, so templates hide it and let the parent's dashed placeholder show
+// through. display:none and visibility:hidden take the element out of hit
+// testing, so the click never reaches it, so the panel never opens, so the code
+// is never minted — the slot cannot leave the state that blocks it. opacity:0
+// hides it and keeps it clickable.
+if (qrFields.length) {
+  for (const rule of html.match(/[^{}]*img(?::not\(\[src\]\)|\[src=""\])[^{]*\{[^}]*\}/g) || [])
+    if (/display\s*:\s*none|visibility\s*:\s*hidden/.test(rule))
+      bad(`empty QR slot hidden with display:none/visibility:hidden — it receives no clicks, so the QR panel could never open. Use opacity:0 (contract §5.7): ${rule.trim().replace(/\s+/g, ' ')}`);
+}
 for (const m of domBody.matchAll(/<[^>]*\bdata-qr\b[^>]*>/g)) {
   const k = (m[0].match(/data-field="([^"]+)"/) || [])[1];
   const f = k && schema.fields.find(x => x.key === k);

@@ -681,6 +681,19 @@ source QR sat:
 <div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" data-qr alt="QR code"></div>
 ```
 
+**Hide an empty slot with `opacity:0`, NEVER `display:none`.** The `<img>` has
+no `src` until a code is minted, so the slot is hidden and the parent's dashed
+placeholder shows through. `display:none` and `visibility:hidden` take the
+element out of hit-testing: the click never reaches it, the QR panel never
+opens, and the code can only be minted from that panel — so the slot can never
+leave the state that blocks it. `opacity:0` hides it and keeps it clickable.
+
+```css
+.qr-slot img:not([src]), .qr-slot img[src=""] { opacity: 0; }   /* NOT display:none */
+```
+
+`selfcheck.mjs` refuses `display:none` and `visibility:hidden` here.
+
 **`data-qr` is load-bearing, not decoration** — and `selfcheck.mjs` now
 REFUSES a `qr` field whose element lacks it, because saying it here was not
 enough twice. The editor's contract treats
