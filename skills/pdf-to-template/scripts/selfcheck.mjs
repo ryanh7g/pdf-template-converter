@@ -49,6 +49,32 @@ for (const f of refs) if (!existsSync(`${dir}/${f}`)) bad(`referenced file missi
 if (!/window\.renderFlyer\s*=\s*render/.test(html)) bad('window.renderFlyer = render missing');
 if (manifest.id !== basename(resolve(dir))) bad(`manifest.id '${manifest.id}' != folder '${basename(resolve(dir))}'`);
 
+// ── QR slots (contract §5.7): the marker is load-bearing ──────────────────
+// A `qr` field whose <img> carries no `data-qr` converts cleanly, renders a
+// picture, and is DEAD in the editor: every img[data-field] is treated as a
+// photo, so the click is swallowed for the photo tray and the QR panel can
+// never open. The contract has said this since 1.7.0 and a converted template
+// still shipped without it twice, so it is checked here, not only documented.
+const qrFields = schema.fields.filter(f => f.type === 'qr');
+for (const f of qrFields) {
+  const re = new RegExp(`<[^>]*data-field="${esc(f.key)}"[^>]*>`);
+  const el = domBody.match(re);
+  if (el && !/\bdata-qr\b/.test(el[0]))
+    bad(`qr field '${f.key}' element has no data-qr attribute — the editor would treat it as a photo and the QR panel could never open (contract §5.7)`);
+}
+if (qrFields.length) {
+  if (!/data-qr/.test(html.slice(html.indexOf('<script>'))))
+    bad('a qr field exists but no handler mentions data-qr — the photo handlers must exclude the QR slot (contract §5.7)');
+  if (!/img\[data-qr\]|:not\(\[data-qr\]\)/.test(html))
+    warn('no CSS distinguishes the QR slot from a photo slot — it will show a grab cursor (contract §5.7)');
+}
+for (const m of domBody.matchAll(/<[^>]*\bdata-qr\b[^>]*>/g)) {
+  const k = (m[0].match(/data-field="([^"]+)"/) || [])[1];
+  const f = k && schema.fields.find(x => x.key === k);
+  if (!f) bad(`data-qr element ${k ? `'${k}'` : ''} has no schema field — nothing would ever fill it`);
+  else if (f.type !== 'qr') bad(`data-qr element '${k}' is schema type '${f.type}', not 'qr'`);
+}
+
 // ── MLS autofill layer (contract §5.5): image roles + mapping.json ──
 const isImageLike = f => f.type === 'image' || (f.type === 'list' && f.itemType === 'image');
 for (const f of schema.fields) {

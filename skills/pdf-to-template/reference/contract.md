@@ -681,7 +681,9 @@ source QR sat:
 <div class="abs qr-slot"><img id="f-qr" data-field="qr.listing" data-qr alt="QR code"></div>
 ```
 
-**`data-qr` is load-bearing, not decoration.** The editor's contract treats
+**`data-qr` is load-bearing, not decoration** — and `selfcheck.mjs` now
+REFUSES a `qr` field whose element lacks it, because saying it here was not
+enough twice. The editor's contract treats
 every `img[data-field]` as a PHOTO — drag to reposition, alt+scroll to zoom, and
 a click that is deliberately swallowed so the photo tray can open instead
 (`if (el.tagName === "IMG") return;`). A QR slot is an `<img>`, so without the
