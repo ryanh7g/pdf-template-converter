@@ -83,12 +83,13 @@ has a QR, measure its box and emit a `type: "qr"` field at that size in inches
 
 - **Never decode the source QR to pick a default destination.** That url belongs
   to the original design's owner. Omit `qrDestination` and the agent chooses.
-- **If the source QR measures under 64.8pt (0.9in)** — common on postcards — ask,
-  rather than emitting a value the app will reject with no explanation:
+- **If the source QR measures under 36pt (0.5in)** — rare, but it happens on
+  business cards — ask, rather than emitting a value the app will reject with no
+  explanation:
 
-> **This design's QR is 0.62in. The app's minimum is 0.9in, below which a printed
+> **This design's QR is 0.4in. The app's minimum is 0.5in, below which a printed
 > code is unreliable to scan.**
-> — **Enlarge it to 0.9in** (recommended; the layout shifts slightly) ·
+> — **Enlarge it to 0.5in** (recommended; the layout shifts slightly) ·
 > **Keep the source size** (the template is rejected until someone changes it)
 **Never infer this from the artwork.** A converter that hunts for "a logo" in every
 PDF tags the BROKERAGE mark, and then every design made from that template silently

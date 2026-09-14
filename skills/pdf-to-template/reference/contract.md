@@ -177,7 +177,7 @@ Exact shape:
       fullBleed?: boolean; // image: source must cover trim + bleed
       values?: string[];   // enum: allowed values
     };
-    qrSizeIn?: number;      // qr ONLY, REQUIRED: printed edge length in INCHES (min 0.9)
+    qrSizeIn?: number;      // qr ONLY, REQUIRED: printed edge length in INCHES (min 0.5)
     qrDestination?: string; // qr only, OPTIONAL default. NEVER decode it from the source PDF.
   }>;
 }
@@ -751,27 +751,32 @@ one, and the slot renders NOTHING, silently, on paper. **Do not type the field a
 vector into a bitmap, besides handing it to the photo-upload and MLS
 photo-matching paths, which a QR has no business being in.
 
-### `qrSizeIn` — measured, and floored at 0.9in
+### `qrSizeIn` — measured, and floored at 0.5in
 
 `qrSizeIn` is the printed edge length in INCHES **of the code itself** — the
 image box, EXCLUDING any padding the slot adds around it. Measure the source
 QR's box in points and divide by 72.
 
-Which one it measures is load-bearing: a 0.9in slot with 0.1in of padding holds
-a 0.7in code, below what a phone reads off paper. Declaring the outer box would
+Which one it measures is load-bearing: a 0.6in slot with 0.1in of padding holds
+a 0.4in code, below what a phone reads off paper. Declaring the outer box would
 pass the check and print something unscannable. A schema cannot measure CSS, so this declaration is
 what the app checks scannability against.
 
-**The minimum is 0.9in (64.8pt).** A real code is 25 modules plus a 4-module
-quiet zone, which needs 0.83in to read reliably off paper at arm's length.
+**The minimum is 0.5in (36pt)** (it was 0.9in until 2026-09-14; the owner asked
+for 0.5in so postcard-sized codes import as drawn). A real code is 25 modules
+plus a 4-module quiet zone each side = 33 modules, which at 0.015in per module
+needs 0.495in — a close-range scan, proved to decode at 300 DPI by the app's
+`scripts/check-qr-decodes.mjs`. The app still re-checks the declared size
+against the REAL code when a link is minted, so a 12-character short code is
+refused in a 0.5in slot at that point, never printed.
 
-Designers put 0.5in codes on postcards routinely, so **if the source QR measures
-under 64.8pt, ASK — do not silently emit an under-minimum value**, which
-produces a template that fails the app's own gate with no explanation:
+**If the source QR measures under 36pt, ASK — do not silently emit an
+under-minimum value**, which produces a template that fails the app's own gate
+with no explanation:
 
-> **This design's QR is 0.62in. The app's minimum is 0.9in, below which a
+> **This design's QR is 0.4in. The app's minimum is 0.5in, below which a
 > printed code is unreliable to scan.**
-> — **Enlarge it to 0.9in** (recommended; the layout shifts slightly) ·
+> — **Enlarge it to 0.5in** (recommended; the layout shifts slightly) ·
 > **Keep the source size** (the template will be rejected until someone changes it)
 
 ### `qrDestination` — leave it out, and NEVER decode the source
