@@ -51,6 +51,28 @@ toolchain. Note the mode:
 - **Rotation:** if `rotate` is 90/270, the page is landscape; coordinates are
   already in display space. **Subtract `bleedOffsetPt` from each x and y** to get
   trim-relative (`.sheet`) coordinates used in the CSS.
+- **Mixed orientation (TURNED PAGES) — check every run.** If the probe prints
+  `WARNING: mixed orientation` (e.g. a 5.5×10.5 portrait front with a 10.5×5.5
+  landscape back), its JSON carries a `mixedOrientation` block. Then:
+  - `manifest.trim` = `mixedOrientation.printTrimIn` — the LANDSCAPE size, never
+    page 1's size just because it is page 1.
+  - `manifest.pageRotation` = `mixedOrientation.pageRotation`, e.g. `{"1": -90}`
+    (-90 = head-to-head, the default; 90 only if marketing asks for the other turn).
+  - Paste each `mixedOrientation.css` rule — exactly as printed, e.g.
+    `#page1{ --trim-w:5.5in; --trim-h:10.5in; }` — into the editable CSS zone, right
+    after `:root`. That one rule authors the page at its portrait size; do not
+    rotate anything in CSS.
+  - Lay the turned page out UPRIGHT, in its own portrait coordinates (straight
+    from the probe's display coordinates). The app shows it upright in the editor
+    and turns it only inside the print PDF.
+  - Visual checks per page: `SHOOT_SEL="#page1" node $SCRIPTS/shoot.mjs …` (an
+    element screenshot is the page's own size), and `EXPORT_PAGE=1 node
+    $SCRIPTS/export-pdf.mjs <url> out-p1.pdf 5.75 10.75 0.125` with that page's
+    OWN media size.
+  - Both import doors REFUSE a template whose `#pageN` size rule and
+    `pageRotation` disagree (either one without the other).
+  - If the probe says the pages differ in SIZE (not just orientation), stop: that
+    is not a turned page and cannot be one template.
 
 **2. Render & measure.** `node $SCRIPTS/render.mjs <pdf> work 300`.
 Open `work/page-N.png` to measure boxes the text probe can't give you (rule
