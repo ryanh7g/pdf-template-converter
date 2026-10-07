@@ -82,4 +82,35 @@ for (let pn = 1; pn <= doc.numPages; pn++) {
     text: items,
   });
 }
+// ── MIXED ORIENTATION (Marketing Builder TURNED-PAGES-PLAN.md) ──────────────
+// A postcard whose front is portrait (5.5x10.5) and back landscape (10.5x5.5)
+// is ONE piece of paper: the template keeps ONE print trim (manifest.trim, the
+// LANDSCAPE orientation — every postcard trim in the app is landscape and the
+// address side must be) and declares every page authored the other way in
+// manifest.pageRotation. -90 = head-to-head, the app's default
+// (lib/pageGeometry.ts HEAD_TO_HEAD_TURN): the portrait page's top lands on
+// the LEFT edge of the print sheet. Same-size pages swapped = a turn; pages of
+// genuinely different sizes are not a turn and are refused.
+{
+  const dims = report.pages.map((p) => p.trimIn);
+  const portrait = (d) => d[1] > d[0] + 1e-3;
+  const mixed = dims.some((d) => portrait(d) !== portrait(dims[0]));
+  if (mixed) {
+    const land = dims.find((d) => !portrait(d));
+    const sameSheet = dims.every((d) => (Math.abs(d[0] - land[0]) < 0.02 && Math.abs(d[1] - land[1]) < 0.02) || (Math.abs(d[0] - land[1]) < 0.02 && Math.abs(d[1] - land[0]) < 0.02));
+    const pageRotation = {};
+    report.pages.forEach((p, i) => { if (portrait(dims[i])) pageRotation[String(p.page)] = -90; });
+    report.mixedOrientation = sameSheet
+      ? {
+          printTrimIn: land,
+          pageRotation,
+          css: Object.keys(pageRotation).map((n) => `#page${n}{ --trim-w:${land[1]}in; --trim-h:${land[0]}in; }`),
+          note: 'Write manifest.trim = printTrimIn (landscape), manifest.pageRotation = pageRotation, and each css rule into the editable CSS zone. Lay each turned page out in ITS OWN (portrait) coordinates.',
+        }
+      : { error: 'Pages differ in SIZE, not just orientation — not a turned page. Marketing Builder cannot import this as one template.' };
+    console.error(sameSheet
+      ? `WARNING: mixed orientation — page(s) ${Object.keys(pageRotation).join(', ')} are portrait on a ${land[0]}x${land[1]}in landscape piece. See "mixedOrientation" in the JSON: the template MUST declare pageRotation + the #pageN size rule, or the import is refused.`
+      : 'WARNING: pages differ in size — not a turned page; this PDF cannot become one template.');
+  }
+}
 console.log(JSON.stringify(report, null, 2));

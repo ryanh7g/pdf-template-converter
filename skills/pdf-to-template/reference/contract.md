@@ -93,6 +93,7 @@ Exact shape (TypeScript, for precision — emit plain JSON):
   pages: number;         // page count (one <section class="page"> per page)
   trim: { width: number; height: number; unit: "in" | "pt" };  // FINISHED size
   bleedIn: number;       // bleed beyond trim on every edge, in INCHES (e.g. 0.125)
+  pageRotation?: Record<string, 90 | -90>; // TURNED pages only — see "Turned pages" below
   thumbnail: string;     // relative file name, e.g. "thumbnail.jpg"
   entry: string;         // "template.html"
   fonts:  { file: string; family: string; license: string; subset?: boolean }[];
@@ -1856,3 +1857,30 @@ subset font, use a low-resolution default image, or guess a measurement — and,
 listing template, **list the template's agent-branding keys and note that a developer
 must register them in the app branding map (§5.5)** — those are the things a human
 must confirm before the template ships.
+
+
+## Turned pages (mixed orientation)
+
+A postcard whose front is portrait and back landscape is ONE piece of paper.
+The template keeps ONE print trim and turns the odd page:
+
+- `manifest.trim` is the PRINT orientation — the landscape size for a postcard
+  (e.g. `10.5 × 5.5 in`). It is what the print PDF's every page is and what
+  Finished Size says.
+- `manifest.pageRotation` names each page authored the OTHER way, page number →
+  turn: `{"1": -90}`. `-90` = head-to-head (the default): the portrait page's top
+  lands on the LEFT edge of the print sheet. `90` = its top on the RIGHT edge.
+  Nothing else is allowed — no other angles, no other per-page sizes.
+- The template authors that page at the swapped size with ONE rule, in exactly
+  this form, in the editable CSS zone:
+
+  ```css
+  #page1{ --trim-w:5.5in; --trim-h:10.5in; }
+  ```
+
+  Custom properties inherit, so `.page`/`.sheet`/bleed work unchanged on that
+  page. Never CSS-rotate the page or its content: the editor shows it upright,
+  and the app's PDF export turns it (a real content rotation, no `/Rotate`).
+- Both import doors refuse a bundle whose `#pageN` size rule and `pageRotation`
+  disagree. An admin can change the turn's direction later in the template
+  config editor ("Turned pages"), but not invent a turn the CSS doesn't author.
